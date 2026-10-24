@@ -1,0 +1,35 @@
+# These are the user's selected symbols, not agent recommendations.
+mode = "PAPER"
+strategy_name = "vwap_breakout"
+symbols = ["SOXL", "SOXS", "TQQQ", "SQQQ"]
+initial_cash = "10000"
+ema_fast = 9
+ema_slow = 21
+volume_period = 20
+volume_ratio = "1.5"
+atr_period = 14
+breakout_bars = 3
+stop_atr = "1.5"
+reward_r = "2"
+risk_fraction = "0.005"
+daily_loss_fraction = "0.01"
+symbol_fraction = "0.20"
+max_order_usd = "2000"
+max_positions = 3
+cooldown_minutes = 30
+max_entries = 3
+entry_after_minutes = 15
+entry_before_close_minutes = 30
+no_buy_before_close_minutes = 15
+# Start liquidation early enough to aim to finish before the 5-minute deadline.
+flatten_before_close_minutes = 15
+flatten_deadline_minutes = 5
+max_quote_age_seconds = 10
+max_bar_age_seconds = 90
+max_spread_bps = "20"
+max_cost_bps = "30"
+fee_bps = "2"
+slippage_bps = "3"
+quantity_step = "1"
+participation = "0.1"
+paper_poll_seconds = 5

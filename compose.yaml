@@ -1,0 +1,61 @@
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      TOSS_CLIENT_ID: ${TOSS_CLIENT_ID:-}
+      TOSS_CLIENT_SECRET: ${TOSS_CLIENT_SECRET:-}
+      TOSS_ACCOUNT_SEQ: ${TOSS_ACCOUNT_SEQ:-}
+      OPERATIONS_API_KEY: ${OPERATIONS_API_KEY:?Set OPERATIONS_API_KEY}
+      LIVE_TRADING_ENABLED: "false"
+      PAPER_DATABASE_URL: ${PAPER_DATABASE_URL:-sqlite:///data/paper.db}
+    volumes:
+      - paper_data:/app/data
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  paper:
+    profiles: ["paper"]
+    build: .
+    command: [".venv/bin/python", "-m", "toss_trading.runner"]
+    environment:
+      TOSS_CLIENT_ID: ${TOSS_CLIENT_ID:-}
+      TOSS_CLIENT_SECRET: ${TOSS_CLIENT_SECRET:-}
+      LIVE_TRADING_ENABLED: "false"
+      PAPER_DATABASE_URL: ${PAPER_DATABASE_URL:-sqlite:///data/paper.db}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+    volumes:
+      - paper_data:/app/data
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["storage"]
+    environment:
+      POSTGRES_DB: trading
+      POSTGRES_USER: trading
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trading -d trading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  paper_data:
+  postgres_data:
