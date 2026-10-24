@@ -59,10 +59,42 @@ uv run uvicorn toss_trading.api:create_app --factory --host 127.0.0.1 --port 800
 동시 신호는 설정의 종목 나열 순서로 평가하며 최대 3개만 주문 예약합니다.
 
 지표는 당일 정규장 1분봉을 모아 완료된 5분봉에서 계산합니다.
-VWAP은 1분봉 HLC3×거래량의 누적값으로 근사합니다. ATR은 Wilder 방식입니다.
-EMA9/21과 거래량 비율은 판단 기록용이며 백테스트와 같은 워밍업을 유지합니다.
-지표를 매일 초기화하므로 기본값에서 첫 진입 판단에는 최소 **105분의 연속 데이터**가 필요합니다.
+VWAP은 1분봉 HLC3×거래량의 누적값으로 근사하며 **항상 당일 정규장 기준으로 리셋**합니다.
+ATR·RSI는 Wilder 방식입니다. EMA9/21과 거래량 비율은 판단 기록용입니다.
 정규장 시작 이후 누락된 분봉을 채우지 못하면 그 종목의 신규 진입을 중단합니다.
+
+### 구조 옵션 (2026-10-26 추가)
+
+| 설정 | 기본값 | 기존 동작 재현 값 | 내용 |
+| --- | --- | --- | --- |
+| `groups` | LONG: SOXL·TQQQ / SHORT: SOXS·SQQQ | `[groups]` 비움 | 상관 종목 방향 그룹 |
+| `opposing_groups` | `[["NASDAQ_LONG","NASDAQ_SHORT"]]` | `[]` | 서로 반대 방향인 그룹 쌍 |
+| `allow_opposing_groups` | `false` | `true` | 반대 그룹 보유·예약 중 신규 진입 차단(OPPOSING_GROUP) |
+| `max_group_risk_fraction` | `0.005` | (그룹 없음) | 그룹 합산 위험 한도(GROUP_RISK_LIMIT) |
+| `indicator_warmup` | `prior_session` | `intraday_only` | EMA·ATR·RSI를 전일 정규장 5분봉으로 seed |
+| `split_gap_fraction` | `0.4` | - | 전일 종가 대비 갭이 이보다 크면 분할 의심으로 seed 생략 |
+| `volume_mode` | `time_of_day` | `rolling` | 같은 5분 슬롯의 과거 평균 대비 거래량 |
+| `volume_lookback_days` | `20` | - | 슬롯 평균에 쓰는 과거 정규장(조기 폐장일 제외) |
+| `volume_fallback` | `block` | - | 이력 부족 시 거래량 조건 실패 또는 `rolling` 폴백 |
+| `min_volume_ratio` | 없음(끔) | 없음 | 거래량 진입 필터. 켤 때만 위 두 항목이 진입에 영향 |
+| `rsi_period` / `rsi_entry_max` | `14` / 없음(끔) | 없음 | RSI 과매도 진입 필터 |
+| `fee_bps` / `slippage_bps` | `10` / `5` | `2` / `3` | 편도 수수료·슬리피지(보수적 임시값) |
+| `fx_spread_bps` | `0` | `0` | 편도 환전 비용 |
+| `sec_fee_bps` / `taf_per_share` / `taf_max_usd` | `0` / `0` / `0` | `0` | 매도 시 SEC fee(bp)·FINRA TAF(주당, 상한) |
+
+전체 재현 설정은 [config/strategy-legacy.toml](config/strategy-legacy.toml)입니다.
+[config/strategy-rsi.toml](config/strategy-rsi.toml)은 기본값에 RSI14 ≤ 30만 더한 비교용 변형입니다.
+
+> **비용 값은 확정값이 아닙니다.** `fee_bps=10`, `slippage_bps=5`는 보수적 임시값이고
+> 환전·SEC fee·TAF는 0입니다. 실제 토스증권 해외주식 수수료·환전 우대 조건과
+> 현행 SEC/FINRA 요율을 직접 확인해 입력하세요. 실데이터 재생에서 비용이 손익을 좌우했습니다.
+
+전일 seed를 쓰면 개장 15분(`entry_after_minutes`) 후부터 진입 판단이 가능합니다.
+전일 데이터가 없거나(첫 실행·데이터 누락) 짧거나 분할이 의심되면 당일 데이터만 쓰고
+`WARMUP_FALLBACK` 이벤트를 남기며, 이때는 개장 후 최소 105분이 필요합니다.
+PAPER runner는 원장에 전일 데이터가 없으면 전일 정규장 분봉을 하루 한 번 조회합니다.
+시간대 거래량은 원장에 쌓인 과거 정규장으로 계산하므로 새 원장에서는 20거래일 동안
+`VOLUME_HISTORY_INSUFFICIENT`가 기록됩니다(거래량 필터를 끈 기본값에서는 진입에 영향 없음).
 
 ## 실제 시세 기반 PAPER
 
@@ -121,6 +153,35 @@ uv run python -m toss_trading.backtest data/history.csv --split 2026-10-22 --out
 ```
 
 CSV 열: `symbol,end,open,high,low,close,volume`. `end`는 타임존이 있는 **1분봉 종료 시각**입니다.
+
+### 외부 1분봉 CSV 검증·변환
+
+특정 벤더 API 연동 없이 `timestamp,open,high,low,close,volume`(+`symbol` 열 또는 `--symbol`)을
+받아 검증하고 위 형식으로 변환합니다. 오프셋이 없는 timestamp는 `--timezone`으로 해석합니다.
+
+```sh
+uv run python -m toss_trading.dataload vendor.csv --symbol SOXL --timestamp-at start \
+  --timezone America/New_York --drop-incomplete --output data/soxl.csv
+```
+
+리포트(`<output>.report.json`): 잘못된 행, 중복(값 충돌 포함), 역순, 정규장 외 분리 건수,
+세션별 누락 분, 조기 폐장일, 전일 종가 대비 40% 초과 갭(분할 의심) 경고.
+
+### 엣지 검증 도구
+
+```sh
+# 기준선: current / vwap_only / random_entry(20 seeds) / buy_and_hold, random 대비 백분위
+uv run python -m toss_trading.backtest data/history.csv --baselines --seeds 20
+# 파라미터 민감도: 주요 결정 파라미터를 ±12.5%, ±25% 하나씩 변경 (최적값 추천 없음)
+uv run python -m toss_trading.backtest data/history.csv --sensitivity
+# Walk-forward: 학습 20일/검증 5일 롤링, 파라미터 고정
+uv run python -m toss_trading.backtest data/history.csv --walk-forward 20,5
+```
+
+옵션은 함께 쓸 수 있으며 결과는 `--output` JSON에 모입니다. `random_entry`는 현재 전략의
+진입 시각 분포와 횟수를 유지한 채 날짜·종목만 무작위로 바꾸고, 청산·리스크·비용은 동일합니다.
+리포트에는 30분 단위 진입 시간대별 성과, 종목·그룹별 성과, 비용 차감 전/후 손익,
+거래 100건 미만 시 표본 부족 경고가 포함됩니다.
 현재 구현은 VWAP과 분봉 내 위험 처리를 위해 1분봉을 요구합니다. 5분봉을 1분봉으로
 임의 보간하지 않습니다. 수정주가 여부·거래량 조정·분할·배당은 입력 데이터에서 검증하세요.
 
@@ -130,7 +191,8 @@ CSV 열: `symbol,end,open,high,low,close,volume`. `end`는 타임존이 있는 *
 체결 잔량은 이전 완료 분봉 거래량에서 추정합니다. 실제 체결 가능성을 입증하지 않습니다.
 
 `--split`은 미국 현지 거래일 기준이며 학습/검증 기간을 별도 원장으로 실행합니다.
-자동 파라미터 탐색은 하지 않습니다. 지표 워밍업도 각 세션에서 새로 시작합니다.
+자동 파라미터 탐색은 하지 않습니다. 검증 구간 첫날은 전일 seed 없이 시작합니다.
+오프라인 재생은 메모리 원장을 씁니다(SQLite 재생과 체결·지표가 동일함을 확인).
 보고서에 수익률·MDD·승률·손익비·Profit Factor·거래 수·평균 거래 수익률·순손익·비용·
 종목별 결과와 동일 기간/비용의 균등 자금 Buy & Hold 비교가 저장됩니다.
 

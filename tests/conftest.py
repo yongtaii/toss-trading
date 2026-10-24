@@ -1,11 +1,14 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from toss_trading.config import Settings
 from toss_trading.domain import Session
 from toss_trading.persistence import Store
-from toss_trading.trading_config import TradingConfig
+from toss_trading.trading_config import TradingConfig, load_config
+
+LEGACY_CONFIG = Path(__file__).parents[1] / "config" / "strategy-legacy.toml"
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +31,12 @@ def settings():
 
 @pytest.fixture
 def config():
+    # Pre-existing tests pin the legacy-reproduction settings; new defaults are tested separately.
+    return load_config(LEGACY_CONFIG)
+
+
+@pytest.fixture
+def default_config():
     return TradingConfig()
 
 

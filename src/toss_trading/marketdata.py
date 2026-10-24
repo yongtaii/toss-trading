@@ -24,6 +24,15 @@ def offline_session(day: date) -> Session | None:
     )
 
 
+def previous_session(day: date) -> Session | None:
+    """Most recent regular session before day (historical calendar; skips holidays)."""
+    for back in range(1, 11):
+        session = offline_session(day - timedelta(days=back))
+        if session:
+            return session
+    return None
+
+
 def broker_session(payload: dict, day: date) -> Session | None:
     today = payload["today"]
     if today["date"] != day.isoformat():

@@ -8,6 +8,15 @@ ema_slow = 21
 volume_period = 20
 atr_period = 14
 stretch_atr = "1.5"
+# Optional RSI oversold filter (Wilder). Omit rsi_entry_max to disable.
+rsi_period = 14
+# Seed EMA/ATR/RSI from the prior regular session; VWAP always resets at the open.
+indicator_warmup = "prior_session"
+split_gap_fraction = "0.4"
+# Volume ratio vs the same 5m slot over past full sessions (logged; filter is off).
+volume_mode = "time_of_day"
+volume_lookback_days = 20
+volume_fallback = "block"
 stop_atr = "2"
 reward_r = "3"
 risk_fraction = "0.005"
@@ -27,8 +36,22 @@ max_quote_age_seconds = 10
 max_bar_age_seconds = 90
 max_spread_bps = "20"
 max_cost_bps = "30"
-fee_bps = "2"
-slippage_bps = "3"
+# PLACEHOLDERS, not confirmed broker terms: replace with your Toss Securities fee,
+# FX conversion spread and current SEC/FINRA rates before trusting cost-sensitive results.
+fee_bps = "10"
+slippage_bps = "5"
+fx_spread_bps = "0"
+sec_fee_bps = "0"
+taf_per_share = "0"
+taf_max_usd = "0"
 quantity_step = "1"
 participation = "0.1"
 paper_poll_seconds = 5
+# Correlated 3x ETFs share one risk budget; opposite directions are never held together.
+opposing_groups = [["NASDAQ_LONG", "NASDAQ_SHORT"]]
+allow_opposing_groups = false
+max_group_risk_fraction = "0.005"
+
+[groups]
+NASDAQ_LONG = ["SOXL", "TQQQ"]
+NASDAQ_SHORT = ["SOXS", "SQQQ"]

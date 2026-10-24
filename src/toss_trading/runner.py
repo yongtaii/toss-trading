@@ -44,6 +44,19 @@ async def poll_once(engines: list[TradingEngine], broker: TossQueries) -> None:
             engine.step(now, session, [], [])
         return
     symbols = list(dict.fromkeys(s for engine in engines for s in engine.config.symbols))
+    # A fresh ledger has no prior session for indicator warmup: fetch it once per day.
+    pending = [(engine, engine.needs_prior(session)) for engine in engines]
+    pending = [(engine, prior) for engine, prior in pending if prior]
+    if pending:
+        prior, history = pending[0][1], []
+        try:
+            for symbol in symbols:
+                history.extend(await fetch_minutes(broker, symbol, prior, prior.close))
+        except (BrokerError, ValueError, KeyError, TypeError):
+            history = []  # Strategy falls back to intraday-only and logs WARMUP_FALLBACK.
+            failures.append("Prior session candles unavailable; intraday-only warmup")
+        for engine, _ in pending:
+            engine.seed_prior(prior, history)
     bars, quotes = [], []
     for symbol in symbols:
         try:

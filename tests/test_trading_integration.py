@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from conftest import LEGACY_CONFIG
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from test_trading import account, minutes, order, position, quote, save
@@ -95,7 +96,8 @@ async def test_pagination_stall_fails_closed(session):
 
 def test_paper_status_api_existing_query_compatibility(settings, config, session, store, tmp_path):
     config_path = tmp_path / "strategy.toml"
-    config_path.write_text('mode = "PAPER"\n')
+    # The ledger fixture uses the legacy settings; the API must load the same file.
+    config_path.write_text(LEGACY_CONFIG.read_text())
     settings.strategy_config_path = str(config_path)
     settings.paper_database_url = SecretStr(str(store.engine.url))
     TradingEngine(config, store).step(session.open, session, [], [])
@@ -357,3 +359,34 @@ def test_compare_ledger_settings_and_api(settings, config, store, tmp_path):
             assert client.get("/v1/paper/events?ledger=compare", headers=headers).status_code == 200
     finally:
         compare.close()
+
+
+async def test_runner_seeds_prior_session_once_and_falls_back_on_failure(
+    default_config, session, monkeypatch
+):
+    from toss_trading.backtest import MemoryStore
+
+    engine = TradingEngine(default_config, MemoryStore(default_config))
+    now = session.open + timedelta(hours=2)
+    monkeypatch.setattr("toss_trading.runner.datetime", SimpleNamespace(now=lambda tz: now))
+    broker = SimpleNamespace(
+        market_calendar=AsyncMock(
+            return_value={
+                "today": {
+                    "date": session.day,
+                    "regularMarket": {
+                        "startTime": session.open.isoformat(),
+                        "endTime": session.close.isoformat(),
+                    },
+                }
+            }
+        ),
+        candles=AsyncMock(side_effect=BrokerError(500)),
+        orderbook=AsyncMock(side_effect=BrokerError(500)),
+    )
+    await poll_once([engine], broker)
+    first = broker.candles.call_count
+    assert engine.store.state.prior_day == "2026-10-16"  # Friday before Monday 10-19.
+    assert engine.store.state.prior_bars == {}  # Fetch failed: strategy falls back.
+    await poll_once([engine], broker)
+    assert broker.candles.call_count - first == 4  # Today's bars only; no prior refetch.

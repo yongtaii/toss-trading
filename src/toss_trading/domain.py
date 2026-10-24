@@ -98,6 +98,7 @@ class Position(Model):
     target: Decimal
     opened: AwareDatetime
     initial_risk: Decimal
+    entry_slippage: Decimal = ZERO
 
 
 class State(Model):
@@ -117,6 +118,11 @@ class State(Model):
     last_event: AwareDatetime | None = None
     last_bars: dict[str, AwareDatetime] = Field(default_factory=dict)
     bars: dict[str, list[Bar]] = Field(default_factory=dict)
+    # Completed prior regular session, aggregated to 5m bars, for indicator seeding.
+    prior_day: str = ""
+    prior_bars: dict[str, list[Bar]] = Field(default_factory=dict)
+    # symbol -> 5m slot index -> volumes from recent full-length sessions, oldest first.
+    slot_volumes: dict[str, dict[int, list[Decimal]]] = Field(default_factory=dict)
     trades: list[dict] = Field(default_factory=list)
     fees: Decimal = ZERO
     realized: Decimal = ZERO

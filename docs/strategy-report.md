@@ -208,3 +208,110 @@ LIVE 이전에 다음을 확인해야 합니다.
 2절의 진입·추세 청산 규칙은 이전 전략 기준이며 리스크·주문·원장 규칙은 그대로 적용됩니다.
 10월 검증 구간에서 손실이었으므로 2026-10-26 이후 PAPER 기록을 독립 표본으로 삼아 계속 검증합니다.
 설정 항목이 바뀌어 기존 PAPER 원장은 새로 시작해야 합니다.
+
+## 8. 구조 개선과 검증 도구 (2026-10-26)
+
+요청서는 이전 breakout 전략 기준이었으므로 현재 `vwap_mean_revert`에 맞게 다음을 조정했습니다.
+수익률을 높이기 위한 파라미터 변경은 하지 않았고, 합성 데이터 결과로 기본값을 정하지 않았습니다.
+LIVE 경계·HTTP 주문 차단·실주문 코드는 변경하지 않았습니다.
+
+- 시간대 거래량(1-3): 현재 전략은 거래량을 진입에 쓰지 않으므로 비율 계산만 바꾸고,
+  진입 필터 `min_volume_ratio`를 새로 두되 기본은 끔. "이력 부족 시 진입 안 함"은 필터를 켤 때 적용.
+- 민감도(2-3): `ema_fast/ema_slow`, `volume_ratio`, `breakout_bars`는 현재 판단에 영향이 없거나
+  삭제된 항목이어서 `stretch_atr`, `stop_atr`, `reward_r`, `atr_period`(+켜진 RSI·거래량 필터)를 사용.
+- `vwap_only`(2-2): 현재 전략의 VWAP 회복 청산을 그대로 쓰면 진입 직후 청산되므로 공통 청산
+  (손절·익절·마감)은 같게 두고 고유 청산은 "종가 < VWAP"으로 대칭 처리.
+- RSI: 사용자 요청으로 `rsi_entry_max` 필터를 추가(기본 끔). RSI14 ≤ 30 변형은 사전 고정값이며
+  `config/strategy-rsi.toml`로 비교 PAPER에서 검증.
+
+### 8.1 변경 파일
+
+| 파일 | 변경 |
+| --- | --- |
+| `trading_config.py` | 그룹·워밍업·거래량·RSI·비용 설정과 검증, 비용 합산 helper |
+| `strategy.py` | 공통 지표 클래스, 전일 seed·폴백 사유, 시간대/rolling 거래량, Wilder RSI, `vwap_only`·`random_entry` 기준 전략 |
+| `risk.py` | 반대 그룹 차단, 그룹 위험 예산(부분 체결 이중 계산 방지), 새 비용의 비용 필터·위험 예산 반영, 거부 코드 |
+| `execution.py` | 매수 환전비, 매도 SEC·TAF, 체결별 슬리피지 기록 |
+| `engine.py` | 세션 종료 시 5분봉·슬롯 거래량 보관(조기 폐장 제외), 전일 확인, WARMUP_FALLBACK·VOLUME_HISTORY_INSUFFICIENT·거부 사유 기록, 전략 주입. 날짜 전환 시 이전 세션을 덮어쓰던 순서를 수정 |
+| `domain.py` | `prior_day`, `prior_bars`, `slot_volumes`, `Position.entry_slippage` |
+| `marketdata.py` | `previous_session` (휴장 건너뜀) |
+| `runner.py` | 새 원장에서 전일 정규장 분봉을 하루 한 번 조회해 seed, 실패 시 폴백 |
+| `backtest.py` | 메모리 원장, `--baselines`·`--seeds`·`--sensitivity`·`--walk-forward`·`--workers`, 리포트 보강 |
+| `dataload.py` (신규) | 벤더 중립 CSV 검증·변환 CLI |
+| `config/strategy*.toml` | 새 기본값, 기존 동작 재현(`legacy`), RSI 변형 |
+| 테스트 | `conftest.py`(기존 테스트를 legacy 설정에 고정), `test_structure.py`·`test_validation_tools.py` 신규, 통합 테스트 1개 추가 |
+
+기존 테스트의 기대값은 바꾸지 않았습니다. `config` fixture가 `strategy-legacy.toml`을 읽도록 했고,
+API 테스트 1건은 원장과 같은 설정 파일을 쓰도록 준비 단계만 바꿨습니다(새 기본값과 원장 설정 불일치 방지).
+
+### 8.2 설정 항목
+
+README "구조 옵션" 표 참조. 기존 동작은 `config/strategy-legacy.toml`로 재현되며, 실데이터
+재생에서 legacy 설정이 7절 수치(학습 +$935.52/PF 1.82/172건, 검증 −$184.75/PF 0.65/43건)를
+새 백테스트 모듈과 새 CSV 로더를 거쳐 동일하게 재현함을 확인했습니다.
+
+### 8.3 테스트
+
+pytest **126개 통과**(기존 92 + 신규 34), Ruff lint/format 통과, 경고 5건(기존 Starlette/Pandas).
+그룹(반대 그룹·예약 포함, 예산 소진, 부분 체결, 설정 검증, 거부 기록), 워밍업(정시 진입, 휴장 직후,
+DST 전환, 조기 폐장 다음날, 누락일, 갭 있는 전일, 분할 의심, runner seed·실패 폴백),
+시간대 거래량(이력 부족 block/rolling, 조기 폐장 제외, lookback 상한), 비용(필터·위험 예산·
+SEC/TAF 상한·legacy 공식), RSI 값과 on/off, random_entry 시드 재현성, 기준선·민감도·walk-forward·
+리포트 형식, 로더 검증 항목을 다룹니다.
+
+### 8.4 합성 데이터 실행 (엔진 동작 확인용)
+
+**합성 가격은 시장 이력이 아니며 아래 수치로 성과를 해석하면 안 됩니다.**
+`data/synthetic.csv`(4일·4종목), 기본 설정, 20 seeds:
+current −2.11%(16건), vwap_only 거래 없음, random_entry 중앙값 −0.88%(목표 8회 진입),
+Buy & Hold +0.13%. 각 경로가 실행되고 리포트가 생성되는지만 확인한 결과입니다.
+
+### 8.5 수집된 실데이터 실행 (참고)
+
+7절의 54개 완전 세션을 `dataload --drop-incomplete`로 변환해 **새 기본값**으로 실행했습니다.
+이 기간은 이미 전략 선택에 쓰였으므로 독립 검증이 아닙니다.
+
+| 실행 | 수익률 | PF | 승률 | 거래 | MDD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| current (전체) | −1.55% | 0.94 | 52.5% | 276 | 4.3% |
+| vwap_only | −16.46% | 0.27 | 14.2% | 275 | 17.3% |
+| random_entry 20 seeds | 중앙값 −6.31% (−9.25% ~ −2.59%) | 0.37~0.79 | | 약 170~190 | |
+| Buy & Hold | −10.53% | | | | |
+
+- current는 random_entry 20개 모두보다 수익률·PF가 높았습니다(백분위 100). 다만 random 진입이
+  VWAP 위에서 일어나면 현재 청산 규칙상 곧바로 청산되어 비용만 지불하고, 실제 random 거래 수가
+  목표(258)보다 적습니다. 진입 신호의 우위를 시사하지만 이 구조적 불리함을 감안해야 합니다.
+- 학습(7~9월) +0.56%/PF 1.03, 검증(10월) −2.55%/PF 0.58. 학습 구간 비용 차감 전 +$1,075, 비용 $1,019.
+  legacy 비용(2bp/3bp)에서 +$935였던 결과가 임시 비용값(10bp/5bp)에서 거의 0이 되었습니다.
+  **실제 수수료 입력 전에는 순손익을 판단할 수 없습니다.**
+- 민감도: 16개 이웃 모두 PF 0.84~0.99(기준 0.94)로 성과가 안정적이지만 모두 1 미만입니다.
+- Walk-forward(20/5, 7구간): 양수 4구간, 구간 수익률 중앙값 +0.40%, 평균 −0.21%. 10월 두 구간이 손실.
+
+### 8.6 실데이터가 들어오면 실행할 순서
+
+```sh
+# 1) 변환·검증 (리포트의 누락·분할 의심·정규장 외 건수 확인)
+uv run python -m toss_trading.dataload raw.csv --timestamp-at end --drop-incomplete --output data/new.csv
+# 2) config/strategy.toml에 실제 fee_bps / fx_spread_bps / sec_fee_bps / taf_* 입력
+# 3) 엣지: random 대비 백분위와 vwap_only 비교
+uv run python -m toss_trading.backtest data/new.csv --baselines --seeds 50 --output data/baselines.json
+# 4) 안정성: 이웃 조합의 분산 확인 (최적값 선택 금지)
+uv run python -m toss_trading.backtest data/new.csv --sensitivity --output data/sensitivity.json
+# 5) 일관성: 고정 파라미터 구간별 성과
+uv run python -m toss_trading.backtest data/new.csv --walk-forward 20,5 --output data/wf.json
+# 6) RSI 변형도 같은 순서로 (--config config/strategy-rsi.toml)
+```
+
+### 8.7 미구현·판단 필요 사항
+
+1. **실제 비용 값**: 토스증권 해외주식 수수료·환전 우대율, 현행 SEC fee·TAF 요율을 입력해야 합니다.
+   SEC/TAF 기본값은 확정 요율을 임의로 넣지 않으려고 0으로 두었습니다.
+2. **분할 판단**: 기업행위 데이터가 없어 전일 대비 40% 초과 갭을 분할 의심으로 간주합니다.
+   3배 레버리지 ETF의 실제 급등락과 구분하지 못할 수 있습니다.
+3. **시간대 거래량 이력**: PAPER 새 원장은 20거래일 동안 이력이 없습니다. 과거 분봉으로 미리
+   채우는 기능은 만들지 않았습니다(필터가 꺼진 기본값에서는 영향 없음).
+4. **random_entry 설계**: 현재 청산 규칙과 결합하면 VWAP 위 무작위 진입이 즉시 청산됩니다.
+   "진입 시점 VWAP 아래인 경우로 제한한 무작위" 같은 대안 기준선을 추가할지 결정이 필요합니다.
+5. **Walk-forward 학습 구간**: 이번 단계는 파라미터를 고르지 않으므로 학습 구간은 이력 제공용입니다.
+6. **기존 PAPER 원장**: 설정 JSON이 바뀌어 기존 원장은 새로 시작해야 합니다.
+7. **SQLite 재생**: 오프라인 재생을 메모리 원장으로 바꿨습니다. 직렬화 경로는 PAPER와 테스트가 검증합니다.

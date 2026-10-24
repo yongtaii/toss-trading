@@ -1,0 +1,46 @@
+# Reproduces the pre-2026-10-26 behaviour (intraday-only indicators, rolling volume,
+# no direction groups, 2bp fee / 3bp slippage). Used by tests and comparisons.
+# These are the user's selected symbols, not agent recommendations.
+mode = "PAPER"
+strategy_name = "vwap_mean_revert"
+symbols = ["SOXL", "SOXS", "TQQQ", "SQQQ"]
+initial_cash = "10000"
+ema_fast = 9
+ema_slow = 21
+volume_period = 20
+atr_period = 14
+stretch_atr = "1.5"
+indicator_warmup = "intraday_only"
+volume_mode = "rolling"
+stop_atr = "2"
+reward_r = "3"
+risk_fraction = "0.005"
+daily_loss_fraction = "0.01"
+symbol_fraction = "0.20"
+max_order_usd = "2000"
+max_positions = 3
+cooldown_minutes = 30
+max_entries = 3
+entry_after_minutes = 15
+entry_before_close_minutes = 30
+no_buy_before_close_minutes = 15
+# Start liquidation early enough to aim to finish before the 5-minute deadline.
+flatten_before_close_minutes = 15
+flatten_deadline_minutes = 5
+max_quote_age_seconds = 10
+max_bar_age_seconds = 90
+max_spread_bps = "20"
+max_cost_bps = "30"
+fee_bps = "2"
+slippage_bps = "3"
+fx_spread_bps = "0"
+sec_fee_bps = "0"
+taf_per_share = "0"
+taf_max_usd = "0"
+quantity_step = "1"
+participation = "0.1"
+paper_poll_seconds = 5
+opposing_groups = []
+allow_opposing_groups = true
+
+[groups]

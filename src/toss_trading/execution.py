@@ -65,8 +65,10 @@ class PaperExecution:
             )
             if quantity <= 0:
                 continue
-            fee = quantity * price * c.fee_bps / 10000
+            # Slippage is already inside price; track it so reports can split gross and net.
+            slippage = quantity * abs(price - (quote.ask if buy else quote.bid))
             if buy:
+                fee = quantity * price * c.entry_cost_bps / 10000
                 total = quantity * price + fee
                 other_reserved = sum(
                     (o.reserved for o in state.pending() if o.side == "BUY" and o.id != order.id),
@@ -95,6 +97,7 @@ class PaperExecution:
                     ) / new_qty
                     previous.quantity = new_qty
                     previous.entry_fees += fee
+                    previous.entry_slippage += slippage
                     previous.stop, previous.target = (
                         previous.entry - risk,
                         previous.entry + c.reward_r * risk,
@@ -109,6 +112,7 @@ class PaperExecution:
                         target=price + c.reward_r * risk,
                         opened=now,
                         initial_risk=risk,
+                        entry_slippage=slippage,
                     )
                     state.entries[order.symbol] = state.entries.get(order.symbol, 0) + 1
                 order.reserved = max(ZERO, order.reserved - total)
@@ -116,8 +120,10 @@ class PaperExecution:
             else:
                 position = state.positions[order.symbol]
                 quantity = min(quantity, position.quantity)
-                fee = quantity * price * c.fee_bps / 10000
+                fee = c.sell_charges(quantity, price)
                 allocated_fee = position.entry_fees * quantity / position.quantity
+                allocated_slippage = position.entry_slippage * quantity / position.quantity
+                slippage = quantity * abs(price - quote.bid)
                 pnl = (price - position.entry) * quantity - fee - allocated_fee
                 state.cash += quantity * price - fee
                 state.realized += pnl
@@ -132,11 +138,13 @@ class PaperExecution:
                         "pnl": str(pnl),
                         "entry_fee": str(allocated_fee),
                         "exit_fee": str(fee),
+                        "slippage": str(allocated_slippage + slippage),
                         "reason": order.reason,
                     }
                 )
                 position.quantity -= quantity
                 position.entry_fees -= allocated_fee
+                position.entry_slippage -= allocated_slippage
                 if position.quantity == 0:
                     del state.positions[order.symbol]
                 if order.reason == "STOP":
@@ -162,7 +170,7 @@ class PaperExecution:
                     "price": price,
                     "fee": fee,
                     "pnl": pnl,
-                    "daily_pnl": state.equity(c.fee_bps) - state.day_equity,
+                    "daily_pnl": state.equity(c.exit_cost_bps) - state.day_equity,
                     "reason": order.reason,
                     "notify": True,
                 }
