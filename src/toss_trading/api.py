@@ -117,23 +117,26 @@ def create_app(settings: Settings | None = None, broker: BrokerQueries | None = 
     async def order(broker: broker_dep, order_id: str):
         return {"result": await broker.order(order_id)}
 
-    def paper_store() -> Store:
+    def paper_store(ledger: str) -> Store:
+        if ledger == "compare":
+            if settings.compare_config_path is None or settings.compare_database_url is None:
+                raise HTTPException(404, "No comparison PAPER strategy configured")
+            url, path = settings.compare_database_url, settings.compare_config_path
+        else:
+            url, path = settings.paper_database_url, settings.strategy_config_path
         try:
-            return Store(
-                settings.paper_database_url.get_secret_value(),
-                load_config(settings.strategy_config_path),
-                initialize=False,
-            )
+            return Store(url.get_secret_value(), load_config(path), initialize=False)
         except (OSError, ValueError):
             raise HTTPException(503, "Paper configuration or ledger unavailable") from None
 
     @app.get("/v1/paper", dependencies=auth)
-    def paper_state():
-        store = paper_store()
+    def paper_state(ledger: Literal["primary", "compare"] = "primary"):
+        store = paper_store(ledger)
         try:
             _, state = store.load()
             return {
                 "mode": "PAPER",
+                "strategy": json.loads(store.config_json)["strategy_name"],
                 "equity": str(state.equity()),
                 "state": state.model_dump(mode="json"),
             }
@@ -143,8 +146,11 @@ def create_app(settings: Settings | None = None, broker: BrokerQueries | None = 
             store.close()
 
     @app.get("/v1/paper/events", dependencies=auth)
-    def paper_events(limit: int = Query(default=50, ge=1, le=500)):
-        store = paper_store()
+    def paper_events(
+        limit: int = Query(default=50, ge=1, le=500),
+        ledger: Literal["primary", "compare"] = "primary",
+    ):
+        store = paper_store(ledger)
         try:
             with store.engine.connect() as conn:
                 rows = conn.execute(

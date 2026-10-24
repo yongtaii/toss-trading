@@ -38,7 +38,8 @@ async def dispatch(store: Store, webhook: str, *, transport=None) -> int:
                     continue
             record = json.loads(row["payload"])
             # Paper account only; never expose broker credentials/account identifiers.
-            text = "[PAPER] " + json.dumps(record, ensure_ascii=False)
+            strategy = json.loads(store.config_json)["strategy_name"]
+            text = f"[PAPER {strategy}] " + json.dumps(record, ensure_ascii=False)
             try:
                 response = await client.post(webhook, json={"text": text})
                 status = (

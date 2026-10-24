@@ -1,16 +1,15 @@
 # These are the user's selected symbols, not agent recommendations.
 mode = "PAPER"
-strategy_name = "vwap_breakout"
+strategy_name = "vwap_mean_revert"
 symbols = ["SOXL", "SOXS", "TQQQ", "SQQQ"]
 initial_cash = "10000"
 ema_fast = 9
 ema_slow = 21
 volume_period = 20
-volume_ratio = "1.5"
 atr_period = 14
-breakout_bars = 3
-stop_atr = "1.5"
-reward_r = "2"
+stretch_atr = "1.5"
+stop_atr = "2"
+reward_r = "3"
 risk_fraction = "0.005"
 daily_loss_fraction = "0.01"
 symbol_fraction = "0.20"

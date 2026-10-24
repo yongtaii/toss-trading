@@ -47,14 +47,21 @@ uv run uvicorn toss_trading.api:create_app --factory --host 127.0.0.1 --port 800
 
 ## 전략 설정
 
-[config/strategy.toml](config/strategy.toml)에서 종목, 지표 기간, 거래량 임계값,
+전략은 `vwap_mean_revert` 하나입니다. 완료된 5분봉 종가가 당일 VWAP보다
+`stretch_atr`(기본 1.5)×ATR14 이상 아래에 있으면 매수하고, 종가가 VWAP을 회복하면 청산합니다(VWAP_EXIT).
+손절은 체결가−2×ATR, 익절은 3R입니다. 7~9월 실데이터 재생에서는 수익이었으나 10월 검증 구간에서는
+손실이었으므로 PAPER로 전진 검증 중입니다([보고서 7절](docs/strategy-report.md)).
+이전 `vwap_breakout`은 같은 기간 PF 0.64로 손실이어서 제거했습니다.
+
+[config/strategy.toml](config/strategy.toml)에서 종목, 지표 기간, 이탈 폭,
 손절·익절, 비용, 데이터 유효 시간, 주문 금액, 장 마감 시간 등을 변경합니다.
 위험 비율·종목 비중·최대 포지션·진입 횟수·쿨다운에는 요청한 안전 한도를 적용합니다.
 동시 신호는 설정의 종목 나열 순서로 평가하며 최대 3개만 주문 예약합니다.
 
 지표는 당일 정규장 1분봉을 모아 완료된 5분봉에서 계산합니다.
-VWAP은 1분봉 HLC3×거래량의 누적값으로 근사합니다. EMA는 SMA seed, ATR은 Wilder 방식입니다.
-EMA·ATR도 매일 초기화하므로 기본값에서 첫 진입 판단에는 최소 **105분의 연속 데이터**가 필요합니다.
+VWAP은 1분봉 HLC3×거래량의 누적값으로 근사합니다. ATR은 Wilder 방식입니다.
+EMA9/21과 거래량 비율은 판단 기록용이며 백테스트와 같은 워밍업을 유지합니다.
+지표를 매일 초기화하므로 기본값에서 첫 진입 판단에는 최소 **105분의 연속 데이터**가 필요합니다.
 정규장 시작 이후 누락된 분봉을 채우지 못하면 그 종목의 신규 진입을 중단합니다.
 
 ## 실제 시세 기반 PAPER
@@ -88,6 +95,20 @@ uv run python -m toss_trading.runner --slack
 체결, 손절, 일일 손실 한도, API 오류, 청산 실패, 일일 결과는 outbox에 저장합니다.
 전송 타임아웃은 UNKNOWN으로 남겨 중복 전송을 피하며, FAILED/UNKNOWN/SENDING의 운영자
 확인·재처리가 필요합니다. 테스트·백테스트는 Slack을 호출하지 않습니다.
+
+### 설정 비교 PAPER (선택)
+
+다른 설정 파일(예: `stretch_atr`만 바꾼 사본)을 같은 시세로 동시에 모의 운용할 수 있습니다.
+같은 client로 프로세스를 둘 띄우면 토큰이 서로를 무효화하므로, 하나의 runner가 시세를 한 번
+조회해 두 설정에 공급하고 원장만 분리합니다.
+
+```dotenv
+COMPARE_CONFIG_PATH=config/strategy-variant.toml
+COMPARE_DATABASE_URL=sqlite:///data/paper-variant.db
+```
+
+두 값은 함께 설정해야 하며 비교 원장은 기본 원장과 달라야 합니다. 상태는
+`GET /v1/paper?ledger=compare`, `GET /v1/paper/events?ledger=compare`로 조회합니다.
 
 ## 과거 데이터와 백테스트
 

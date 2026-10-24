@@ -12,9 +12,19 @@ class Settings(BaseSettings):
     paper_database_url: SecretStr = SecretStr("sqlite:///data/paper.db")
     slack_webhook_url: SecretStr | None = None
     strategy_config_path: str = "config/strategy.toml"
+    # Optional second PAPER strategy fed the same market data; needs its own ledger.
+    compare_config_path: str | None = None
+    compare_database_url: SecretStr | None = None
     live_trading_enabled: bool = False
 
-    @field_validator("toss_account_seq", "operations_api_key", "slack_webhook_url", mode="before")
+    @field_validator(
+        "toss_account_seq",
+        "operations_api_key",
+        "slack_webhook_url",
+        "compare_config_path",
+        "compare_database_url",
+        mode="before",
+    )
     @classmethod
     def empty_optional_value(cls, value):
         return None if value == "" else value
@@ -23,4 +33,12 @@ class Settings(BaseSettings):
     def prohibit_live_trading(self):
         if self.live_trading_enabled:
             raise ValueError("LIVE is disabled until broker execution is independently certified")
+        if (self.compare_config_path is None) != (self.compare_database_url is None):
+            raise ValueError("Set both COMPARE_CONFIG_PATH and COMPARE_DATABASE_URL, or neither")
+        if (
+            self.compare_database_url is not None
+            and self.compare_database_url.get_secret_value()
+            == self.paper_database_url.get_secret_value()
+        ):
+            raise ValueError("Comparison strategy needs a separate PAPER ledger")
         return self

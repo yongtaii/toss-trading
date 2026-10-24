@@ -14,14 +14,15 @@ from toss_trading.marketdata import broker_session, offline_session, parse_candl
 from toss_trading.notifications import dispatch
 from toss_trading.persistence import ConcurrentUpdate, Store, events, outbox
 from toss_trading.risk import quote_checks, size_entry
-from toss_trading.strategy import VwapBreakout, aggregate, ema
+from toss_trading.strategy import VwapMeanRevert, aggregate, create_strategy, ema
 from toss_trading.trading_config import TradingConfig
 
 
-def minutes(session, count=110, symbol="SOXL", descending=False):
+def minutes(session, count=110, symbol="SOXL", rising=False):
+    # Default: a steady fall that ends stretched below VWAP, i.e. an entry signal.
     result = []
     for i in range(1, count + 1):
-        value = D("25") + D(i) * (D("-0.01") if descending else D("0.01"))
+        value = D("25") + D(i) * (D("0.01") if rising else D("-0.01"))
         result.append(
             Bar(
                 symbol=symbol,
@@ -106,14 +107,14 @@ def test_default_user_symbols_and_configuration(config):
 
 def test_indicators_and_buy_signal(config, session):
     rows = minutes(session)
-    decision = VwapBreakout(config).evaluate(rows, session)
+    assert isinstance(create_strategy("vwap_mean_revert", config), VwapMeanRevert)
+    decision = VwapMeanRevert(config).evaluate(rows, session)
     assert decision.signal == "BUY_SIGNAL"
     assert all(decision.checks.values())
     ind = decision.indicators
     assert ind.volume_ratio == 10  # Current volume excluded from prior 20-bar denominator.
-    assert ind.close > ind.ema_fast > ind.ema_slow
-    assert ind.close > ind.vwap
-    assert ind.breakout_high == rows[-6].high
+    assert ind.close < ind.ema_fast < ind.ema_slow
+    assert ind.close < ind.vwap - config.stretch_atr * ind.atr
     assert ind.atr > 0
     assert len(aggregate(rows)) == 22
     assert ema([D(1), D(2), D(3), D(4)], 3) == 3
@@ -122,13 +123,12 @@ def test_indicators_and_buy_signal(config, session):
     assert ind.vwap == expected
 
 
-@pytest.mark.parametrize("kind", ["volume", "breakout", "gap", "warmup", "incomplete", "zero"])
+@pytest.mark.parametrize("kind", ["shallow", "gap", "warmup", "incomplete", "zero"])
 def test_technical_conditions_reject(config, session, kind):
     rows = minutes(session)
-    if kind == "volume":
-        rows = [b.model_copy(update={"volume": D(100)}) for b in rows]
-    elif kind == "breakout":
-        rows[-6] = rows[-6].model_copy(update={"high": D(30)})
+    if kind == "shallow":
+        ind = VwapMeanRevert(config).evaluate(rows, session).indicators
+        config = config.model_copy(update={"stretch_atr": (ind.vwap - ind.close) / ind.atr + 1})
     elif kind == "gap":
         rows.pop(40)
     elif kind == "warmup":
@@ -137,22 +137,21 @@ def test_technical_conditions_reject(config, session, kind):
         rows = rows[:-1]
     else:
         rows = [b.model_copy(update={"volume": D(0)}) for b in rows]
-    assert VwapBreakout(config).evaluate(rows, session).signal != "BUY_SIGNAL"
+    assert VwapMeanRevert(config).evaluate(rows, session).signal != "BUY_SIGNAL"
 
 
-def test_trend_exit_and_session_vwap_reset(config, session):
-    decision = VwapBreakout(config).evaluate(minutes(session, descending=True), session)
-    assert decision.signal == "TREND_EXIT"
-    assert not decision.checks["above_vwap"]
-    assert not decision.checks["above_ema"]
-    assert not decision.checks["ema_uptrend"]
+def test_vwap_exit_and_session_vwap_reset(config, session):
+    decision = VwapMeanRevert(config).evaluate(minutes(session, rising=True), session)
+    assert decision.signal == "VWAP_EXIT"
+    assert decision.indicators.close >= decision.indicators.vwap
+    assert not decision.checks["stretched_below_vwap"]
     next_day = session.model_copy(
         update={
             "open": session.open + timedelta(days=1),
             "close": session.close + timedelta(days=1),
         }
     )
-    assert VwapBreakout(config).evaluate(minutes(session), next_day).indicators is None
+    assert VwapMeanRevert(config).evaluate(minutes(session), next_day).indicators is None
 
 
 @pytest.mark.parametrize("offset,allowed", [(14, False), (15, True), (360, True), (361, False)])
@@ -417,7 +416,7 @@ def test_optimistic_concurrency_rolls_back_events_and_config_change(config, stor
     with store.engine.connect() as conn:
         assert len(conn.execute(select(events)).all()) == 1
     with pytest.raises(ValueError, match="Configuration differs"):
-        Store(str(store.engine.url), TradingConfig(volume_ratio="2"))
+        Store(str(store.engine.url), TradingConfig(stretch_atr="2"))
 
 
 def test_calendar_holiday_dst_early_close_and_official_parse():
@@ -501,9 +500,6 @@ async def test_slack_timeout_unknown_does_not_resend(store):
 
 def test_backtest_same_engine_no_signal_close_fill_and_metrics(config, session):
     rows = minutes(session, count=120)
-    # Preserve a breakout on bar 22, then let the subsequent minute supply fills.
-    for i, bar in enumerate(rows):
-        bar.volume = D(1000 if 105 <= i < 110 else 100)
     report = replay(rows, config)
     assert report["submitted_orders"] >= 1
     assert "buy_and_hold" in report

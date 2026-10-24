@@ -171,7 +171,7 @@ class TradingEngine:
                         "daily_pnl": pnl,
                     }
                 )
-        # STOP has precedence over target, trend, then scheduled flatten.
+        # STOP has precedence over target, VWAP exit, then scheduled flatten.
         for symbol, position in list(state.positions.items()):
             q = quotes_by_symbol.get(symbol)
             decision = decisions.get(symbol)
@@ -181,8 +181,8 @@ class TradingEngine:
                     reason = "STOP"
                 elif q.bid >= position.target:
                     reason = "TARGET"
-            if reason is None and decision and decision[0].signal == "TREND_EXIT":
-                reason = "TREND_EXIT"
+            if reason is None and decision and decision[0].signal == "VWAP_EXIT":
+                reason = "VWAP_EXIT"
             if reason is None and (
                 remaining <= c.flatten_before_close_minutes * 60
                 or "overnight_positions" in state.alerts

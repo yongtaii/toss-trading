@@ -14,7 +14,6 @@ class Indicators:
     ema_slow: Decimal
     volume_ratio: Decimal
     atr: Decimal
-    breakout_high: Decimal
     volume: Decimal
     volume_average: Decimal
 
@@ -56,8 +55,13 @@ class Strategy(Protocol):
     def evaluate(self, minutes: list[Bar], session: Session) -> Decision: ...
 
 
-class VwapBreakout:
-    """Pure completed-candle strategy. No HTTP, credentials, LLM, or order access."""
+class VwapMeanRevert:
+    """Long when stretched below session VWAP; exit when VWAP is reclaimed.
+
+    Pure completed-candle strategy. No HTTP, credentials, LLM, or order access.
+    EMA and volume are logged context; they also set the warmup the strategy was
+    backtested with (2026-07-24..10-23: profitable Jul-Sep, lost in October).
+    """
 
     def __init__(self, config: TradingConfig):
         self.config = config
@@ -74,7 +78,7 @@ class VwapBreakout:
         if not valid or len(minutes) % 5:
             return Decision("WAIT", {"complete_contiguous_session": False}, None)
         bars = aggregate(minutes)
-        needed = max(c.ema_slow, c.volume_period + 1, c.atr_period + 1, c.breakout_bars + 1)
+        needed = max(c.ema_slow, c.volume_period + 1, c.atr_period + 1)
         if len(bars) < needed or sum(b.volume for b in minutes) <= 0:
             return Decision("WAIT", {"warmup": False}, None)
         closes = [b.close for b in bars]
@@ -99,29 +103,23 @@ class VwapBreakout:
             ema(closes, c.ema_slow),
             bars[-1].volume / average_volume,
             atr,
-            max(b.high for b in bars[-c.breakout_bars - 1 : -1]),
             bars[-1].volume,
             average_volume,
         )
         checks = {
-            "above_vwap": ind.close > ind.vwap,
-            "ema_uptrend": ind.ema_fast > ind.ema_slow,
-            "above_ema": ind.close > ind.ema_fast,
-            "volume": ind.volume_ratio >= c.volume_ratio,
-            "breakout": ind.close > ind.breakout_high,
+            "stretched_below_vwap": ind.close < ind.vwap - c.stretch_atr * ind.atr,
             "after_open": (minutes[-1].end - session.open).total_seconds()
             >= c.entry_after_minutes * 60,
             "before_close": (session.close - minutes[-1].end).total_seconds()
             >= max(c.entry_before_close_minutes, c.no_buy_before_close_minutes) * 60,
             "atr_positive": ind.atr > 0,
         }
-        signal = "BUY_SIGNAL" if all(checks.values()) else "WAIT"
-        if ind.close < ind.vwap and ind.close < ind.ema_fast:
-            signal = "TREND_EXIT"
-        return Decision(signal, checks, ind)
+        if ind.close >= ind.vwap:
+            return Decision("VWAP_EXIT", checks, ind)
+        return Decision("BUY_SIGNAL" if all(checks.values()) else "WAIT", checks, ind)
 
 
 def create_strategy(name: str, config: TradingConfig) -> Strategy:
     # Explicit registry; never discovers or installs arbitrary remote packages.
-    registry = {"vwap_breakout": VwapBreakout}
+    registry = {"vwap_mean_revert": VwapMeanRevert}
     return registry[name](config)

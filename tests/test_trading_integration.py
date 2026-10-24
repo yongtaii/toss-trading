@@ -14,7 +14,9 @@ from toss_trading.api import create_app
 from toss_trading.domain import OrderStatus
 from toss_trading.engine import TradingEngine
 from toss_trading.marketdata import NY, fetch_minutes, minute_cutoff
+from toss_trading.persistence import Store
 from toss_trading.runner import poll_once
+from toss_trading.trading_config import TradingConfig
 
 
 async def test_additional_official_read_endpoints(settings, monkeypatch):
@@ -108,11 +110,11 @@ def test_paper_status_api_existing_query_compatibility(settings, config, session
         assert client.post("/v1/orders", headers=headers).status_code == 405
 
 
-def test_engine_trend_exit_uses_completed_candle(config, session, store):
+def test_engine_vwap_exit_uses_completed_candle(config, session, store):
     rows = minutes(session)
     rows[-5:] = [
         bar.model_copy(
-            update={"open": D("18"), "high": D("18.01"), "low": D("17.99"), "close": D("18")}
+            update={"open": D("30"), "high": D("30.01"), "low": D("29.99"), "close": D("30")}
         )
         for bar in rows[-5:]
     ]
@@ -124,10 +126,10 @@ def test_engine_trend_exit_uses_completed_candle(config, session, store):
     state.positions["SOXL"] = p
     state.cash -= 250
     save(store, state)
-    engine.step(now, session, rows[:-1], [quote(now, price="18")])
+    engine.step(now, session, rows[:-1], [quote(now, price="30")])
     assert not store.load()[1].orders
-    engine.step(now, session, rows[-1:], [quote(now, price="18")])
-    assert store.load()[1].pending()[0].reason == "TREND_EXIT"
+    engine.step(now, session, rows[-1:], [quote(now, price="30")])
+    assert store.load()[1].pending()[0].reason == "VWAP_EXIT"
 
 
 @pytest.mark.parametrize("kind", ["stale", "missing", "disabled", "disallowed"])
@@ -195,26 +197,15 @@ def test_gap_does_not_allow_entry_and_missing_calendar_does_not_fill(config, ses
     assert not store.load()[1].positions
 
 
-def test_current_candle_excluded_from_breakout_reference(config, session):
-    from toss_trading.strategy import VwapBreakout
-
-    rows = minutes(session)
-    result = VwapBreakout(config).evaluate(rows, session)
-    # Current high is above its close; using the current candle would incorrectly reject the signal.
-    assert rows[-1].high > result.indicators.close > result.indicators.breakout_high
-    assert result.checks["breakout"]
-
-
-def test_exact_volume_threshold_and_wilder_atr(config, session):
-    from toss_trading.strategy import VwapBreakout
+def test_exact_volume_ratio_and_wilder_atr(config, session):
+    from toss_trading.strategy import VwapMeanRevert
 
     rows = minutes(session)
     for bar in rows[-5:]:
         bar.volume = D(150)
-    result = VwapBreakout(config).evaluate(rows, session)
+    result = VwapMeanRevert(config).evaluate(rows, session)
     assert result.indicators.volume_ratio == D("1.5")
-    assert result.checks["volume"]
-    # Monotonic 0.01/min rise -> 0.05 close delta + 0.005 upper wick per 5m.
+    # Monotonic 0.01/min fall -> 0.05 close delta + 0.005 lower wick per 5m.
     assert result.indicators.atr == D("0.055")
 
 
@@ -239,7 +230,7 @@ async def test_poll_failure_suspends_entries_but_preserves_exit_loop(
         candles=AsyncMock(side_effect=BrokerError(429)),
         orderbook=AsyncMock(side_effect=BrokerError(500)),
     )
-    await poll_once(engine, broker)
+    await poll_once([engine], broker)
     assert not store.load()[1].orders
     assert broker.orderbook.call_count == 4
 
@@ -299,6 +290,70 @@ async def test_calendar_failure_uses_saved_session_for_risk_only(
         candles=AsyncMock(side_effect=BrokerError(500)),
         orderbook=AsyncMock(side_effect=BrokerError(500)),
     )
-    await poll_once(engine, broker)
+    await poll_once([engine], broker)
     assert broker.orderbook.call_count == 4
     assert not store.load()[1].orders
+
+
+async def test_one_market_fetch_feeds_separate_strategy_ledgers(
+    config, store, session, monkeypatch, tmp_path
+):
+    compare_config = config.model_copy(update={"stretch_atr": D("2")})
+    compare_store = Store(f"sqlite:///{tmp_path}/compare.db", compare_config)
+    engines = [TradingEngine(config, store), TradingEngine(compare_config, compare_store)]
+    now = session.open + timedelta(hours=2)
+    monkeypatch.setattr("toss_trading.runner.datetime", SimpleNamespace(now=lambda tz: now))
+    broker = SimpleNamespace(
+        market_calendar=AsyncMock(
+            return_value={
+                "today": {
+                    "date": now.astimezone(NY).date().isoformat(),
+                    "regularMarket": {
+                        "startTime": (now - timedelta(hours=2)).isoformat(),
+                        "endTime": (now + timedelta(hours=2)).isoformat(),
+                    },
+                }
+            }
+        ),
+        candles=AsyncMock(side_effect=BrokerError(429)),
+        orderbook=AsyncMock(side_effect=BrokerError(500)),
+    )
+    try:
+        await poll_once(engines, broker)
+        assert broker.market_calendar.call_count == 1
+        assert broker.orderbook.call_count == 4  # Shared fetch, not once per strategy.
+        for ledger in (store, compare_store):
+            state = ledger.load()[1]
+            assert state.last_event == now and not state.orders
+    finally:
+        compare_store.close()
+
+
+def test_compare_ledger_settings_and_api(settings, config, store, tmp_path):
+    from toss_trading.config import Settings
+
+    with pytest.raises(ValueError, match="both"):
+        Settings(_env_file=None, compare_config_path="config/strategy-mean-revert.toml")
+    with pytest.raises(ValueError, match="separate"):
+        Settings(
+            _env_file=None,
+            compare_config_path="x.toml",
+            compare_database_url="sqlite:///data/paper.db",
+        )
+    headers = {"X-API-Key": settings.operations_api_key.get_secret_value()}
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/v1/paper?ledger=compare", headers=headers).status_code == 404
+    config_path = tmp_path / "compare.toml"
+    config_path.write_text('mode = "PAPER"\nstretch_atr = "2"\n')
+    compare_config = TradingConfig(stretch_atr="2")
+    compare = Store(f"sqlite:///{tmp_path}/compare.db", compare_config)
+    settings.compare_config_path = str(config_path)
+    settings.compare_database_url = SecretStr(str(compare.engine.url))
+    try:
+        with TestClient(create_app(settings)) as client:
+            response = client.get("/v1/paper?ledger=compare", headers=headers)
+            assert response.status_code == 200
+            assert response.json()["state"]["cash"] == "10000"
+            assert client.get("/v1/paper/events?ledger=compare", headers=headers).status_code == 200
+    finally:
+        compare.close()

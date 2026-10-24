@@ -10,6 +10,8 @@ services:
       OPERATIONS_API_KEY: ${OPERATIONS_API_KEY:?Set OPERATIONS_API_KEY}
       LIVE_TRADING_ENABLED: "false"
       PAPER_DATABASE_URL: ${PAPER_DATABASE_URL:-sqlite:///data/paper.db}
+      COMPARE_CONFIG_PATH: ${COMPARE_CONFIG_PATH:-}
+      COMPARE_DATABASE_URL: ${COMPARE_DATABASE_URL:-}
     volumes:
       - paper_data:/app/data
       - ./config:/app/config:ro
@@ -33,6 +35,8 @@ services:
       TOSS_CLIENT_SECRET: ${TOSS_CLIENT_SECRET:-}
       LIVE_TRADING_ENABLED: "false"
       PAPER_DATABASE_URL: ${PAPER_DATABASE_URL:-sqlite:///data/paper.db}
+      COMPARE_CONFIG_PATH: ${COMPARE_CONFIG_PATH:-}
+      COMPARE_DATABASE_URL: ${COMPARE_DATABASE_URL:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     volumes:
       - paper_data:/app/data
