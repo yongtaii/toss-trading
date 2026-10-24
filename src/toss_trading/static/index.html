@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Toss Trading · PAPER 대시보드</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/dashboard/style.css" />
+    <script defer src="/dashboard/app.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="/dashboard/"
+        ><span class="brand-icon">t</span> trading<span class="brand-dot"
+          >.</span
+        ></a
+      >
+      <span class="nav-label">WORKSPACE</span>
+      <nav aria-label="주 메뉴">
+        <a class="active" href="#overview"><span>◫</span> 대시보드</a
+        ><a href="#signals"><span>◎</span> 진입 조건</a
+        ><a href="#positions"><span>▤</span> 포지션</a
+        ><a href="#activity"><span>◷</span> 활동 기록</a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot"></span> PAPER 환경
+        <p>실제 시세로 관찰하는<br />나의 자동매매 전략</p>
+      </div>
+    </aside>
+    <main id="overview">
+      <header>
+        <div class="breadcrumb">내 트레이딩 <span>/</span> 대시보드</div>
+        <span class="paper-badge">PAPER ONLY</span>
+      </header>
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">STRATEGY MONITOR</p>
+          <h1>전략을 한눈에.</h1>
+          <p class="muted">매매 결과와 지금의 상태를 확인하세요.</p>
+        </div>
+        <div class="heading-actions">
+          <label class="sr-only" for="ledger">원장 선택</label
+          ><select id="ledger">
+            <option value="primary">기본 전략</option>
+            <option value="compare" disabled>비교 전략 · 미설정</option></select
+          ><button id="refresh" type="button">↻ 새로고침</button>
+        </div>
+      </section>
+      <div id="notice" class="notice" role="status" aria-live="polite">
+        PAPER 원장을 불러오고 있습니다.
+      </div>
+      <section class="metrics" aria-label="자산 요약">
+        <article class="metric primary">
+          <span>총자산 <small>USD</small></span>
+          <h2 id="equity">—</h2>
+          <p id="total-pnl">원장 연결 대기</p>
+          <div class="metric-decoration" aria-hidden="true">↗</div>
+        </article>
+        <article class="metric">
+          <span>실현손익</span>
+          <h2 id="realized">—</h2>
+          <p>청산 완료 · 매수/매도 비용 반영</p>
+        </article>
+        <article class="metric">
+          <span>미실현손익</span>
+          <h2 id="unrealized">—</h2>
+          <p>최근 평가가 기준 · 매수 비용 반영</p>
+        </article>
+        <article class="metric">
+          <span>보유 현금</span>
+          <h2 id="cash">—</h2>
+          <p id="reserved">주문 예약금 —</p>
+        </article>
+      </section>
+      <section class="health-grid" aria-label="수집기와 시장 상태">
+        <article class="health-card">
+          <div class="health-label">
+            <span>수집기 heartbeat</span
+            ><span id="worker-phase" class="subtle-badge">—</span>
+          </div>
+          <h2 id="worker-state">확인 중</h2>
+          <p id="heartbeat">heartbeat 기록 없음</p>
+        </article>
+        <article class="health-card">
+          <div class="health-label">
+            <span>시세 수집</span
+            ><span id="feed-badge" class="subtle-badge">—</span>
+          </div>
+          <h2 id="feed-state">확인 중</h2>
+          <p id="feed-last-success">마지막 성공 기록 없음</p>
+          <p id="calendar-last-success">시장 일정 조회 기록 없음</p>
+        </article>
+        <article class="health-card">
+          <div class="health-label">
+            <span id="market-clock-label">다음 개장까지</span
+            ><span id="market-source" class="subtle-badge">예정</span>
+          </div>
+          <h2 id="market-countdown">—</h2>
+          <p id="market-next-open">시장 일정을 확인하고 있습니다.</p>
+        </article>
+      </section>
+      <div
+        id="collector-error"
+        class="collector-error"
+        hidden
+        role="status"
+      ></div>
+      <section class="middle-grid">
+        <article class="panel performance">
+          <div class="panel-heading">
+            <div>
+              <h2>누적 실현손익</h2>
+              <p>원장 시작 이후 · 모의 매도 체결 기준</p>
+            </div>
+            <span class="subtle-badge">USD</span>
+          </div>
+          <div id="chart" class="chart">
+            <p class="empty">완료된 매매가 쌓이면 그래프가 표시됩니다.</p>
+          </div>
+          <div class="chart-footer">
+            <span>매도 체결 <strong id="trade-count">—</strong>건</span
+            ><span>누적 수수료 <strong id="fees">—</strong></span>
+          </div>
+        </article>
+        <article class="panel operation">
+          <div class="panel-heading">
+            <h2>운영 상태</h2>
+            <span id="engine-badge" class="subtle-badge">확인 중</span>
+          </div>
+          <dl>
+            <div>
+              <dt>전략</dt>
+              <dd id="strategy">—</dd>
+            </div>
+            <div>
+              <dt>시장 세션</dt>
+              <dd id="session">—</dd>
+            </div>
+            <div>
+              <dt>엔진 마지막 갱신</dt>
+              <dd id="last-event">—</dd>
+            </div>
+            <div>
+              <dt>리스크 상태</dt>
+              <dd id="risk">—</dd>
+            </div>
+          </dl>
+          <div class="operation-note">
+            수집기 heartbeat와 시세 수집 결과는 별도로 확인합니다.<br />엔진
+            갱신 시각은 마지막 매매 처리 기록입니다.
+          </div>
+        </article>
+      </section>
+      <section
+        class="watchlist"
+        id="watchlist"
+        aria-label="관찰 종목"
+      ></section>
+      <section class="panel signals-panel" id="signals">
+        <div class="panel-heading">
+          <div>
+            <h2>종목별 진입 조건</h2>
+            <p>마지막 완료 5분봉의 전략 판단과 현재 원장의 진입 차단 조건</p>
+          </div>
+          <span class="subtle-badge">조건 충족 후 엔진에서 주문 검증</span>
+        </div>
+        <div id="entry-conditions" class="entry-grid">
+          <p class="empty">첫 전략 판단을 기다리고 있습니다.</p>
+        </div>
+      </section>
+      <section class="panel" id="positions">
+        <div class="panel-heading">
+          <div>
+            <h2>포지션 · 주문</h2>
+            <p>모의 원장의 보유 자산과 체결 대기 주문</p>
+          </div>
+          <div class="tabs" role="group" aria-label="내역 선택">
+            <button
+              class="selected"
+              id="positions-tab"
+              type="button"
+              aria-pressed="true"
+            >
+              보유 포지션</button
+            ><button id="orders-tab" type="button" aria-pressed="false">
+              미체결 주문
+            </button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead id="portfolio-head"></thead>
+            <tbody id="portfolio-body">
+              <tr>
+                <td class="empty">원장 연결 대기</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel activity" id="activity">
+        <div class="panel-heading">
+          <div>
+            <h2>최근 활동</h2>
+            <p>최근 100개 이벤트 · 표시 시각은 한국 시간</p>
+          </div>
+          <label class="sr-only" for="event-filter">활동 필터</label
+          ><select id="event-filter">
+            <option value="all">전체 활동</option>
+            <option value="fills">체결</option>
+            <option value="blocked">진입 차단 · 오류</option>
+          </select>
+        </div>
+        <div id="events"><p class="empty">원장 연결 대기</p></div>
+      </section>
+      <footer>
+        <span
+          >Toss Trading <span class="footer-dot">·</span> 개인 PAPER
+          모니터</span
+        ><span id="updated">10초마다 자동 갱신</span>
+      </footer>
+    </main>
+  </body>
+</html>

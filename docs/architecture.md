@@ -23,6 +23,9 @@ src/toss_trading/
 ├── api.py                   # 기존 조회 API + 모의 상태/이벤트 조회
 ├── ports.py                 # 기존 BrokerQueries 계약
 ├── smoke.py                 # 기존 실제 조회 연결 점검
+├── monitoring.py            # worker heartbeat·수집 결과·조회용 시장 일정
+├── dashboard.py             # 별도 로그인·원장 기반 대시보드 API
+├── static/                  # 빌드 없는 HTML/CSS/JS 대시보드
 └── adapters/toss.py          # 기존 OAuth·조회 + 공식 분봉/호가/캘린더 GET
 examples/generate_synthetic.py
 ```
@@ -65,7 +68,13 @@ LIVE의 취소 확인·타임아웃·분산 상태 조정은 PAPER 동작을 그
 3. PostgreSQL 운영 마이그레이션·백업/복원, WebSocket 수집, 공유 토큰과 호출 한도 관리를 검증합니다.
 4. LIVE 어댑터의 브로커 orderId 매핑·멱등성·잔고/체결 재조정·보호 주문·정규장 종료 취소를 별도 구현/검증합니다.
 5. 검증 증거와 독립 활성화 조건을 갖춘 뒤 LIVE 전환을 설계합니다. 현재는 설정만으로 활성화할 수 없습니다.
-6. Lightsail 배포 승인·CD·React 대시보드를 추가합니다. 기존 CI와 Compose는 유지했습니다.
+6. 구현된 `/dashboard/`와 `compose.aws.yaml`로 Lightsail HTTPS 배포를 수행합니다.
+   이후 커밋 SHA 기반 CD를 추가합니다. 대시보드는 별도 프론트 빌드 없이 FastAPI에서 제공합니다.
 
 운영 DB를 변경할 때 aggregate schema version, 데이터 마이그레이션과 롤백을 함께 설계해야 합니다.
 현재 metadata.create_all은 초기 스키마 생성만 담당하며 기존 DB 변경을 자동 수행하지 않습니다.
+
+모니터링은 단일 행 `paper_worker_status`와 종목별 `paper_symbol_signals`에 저장합니다.
+heartbeat는 거래 원장 revision과 이벤트/outbox를 늘리지 않습니다. 최신 전략 판단과 진입 실행 결과는
+원장 commit과 같은 트랜잭션에서 반영합니다. worker 초기화 시 누락된 모니터링 테이블만 생성하며,
+조회 API는 테이블이 없는 이전 DB도 읽고 누락된 상태를 미확인으로 표시합니다.

@@ -45,23 +45,21 @@ def group_risk(state: State, group: str | None, c: TradingConfig) -> Decimal:
     return used
 
 
-def size_entry(
+def entry_state_checks(
     state: State,
     symbol: str,
-    atr: Decimal,
-    q: Quote,
     now: datetime,
     session: Session,
     c: TradingConfig,
-) -> tuple[Decimal, dict[str, bool]]:
+) -> dict[str, bool]:
+    """Shared position/session gates, without inventing a quote for monitoring."""
     equity = state.equity(c.exit_cost_bps)
     pending = state.pending()
     slots = set(state.positions) | {o.symbol for o in pending if o.side == "BUY"}
     remaining = (session.close - now).total_seconds()
     group = c.group_of(symbol)
     opposing = {s for g in c.opposing(group) for s in c.groups[g]}
-    checks = {
-        "allowlisted": symbol in c.symbols and q.symbol == symbol,
+    return {
         "reconciled": state.reconciled,
         "no_overnight_positions": "overnight_positions" not in state.alerts,
         "regular_session": session.contains(now),
@@ -76,12 +74,30 @@ def size_entry(
         "opposing_group": c.allow_opposing_groups or not slots & opposing,
         "entry_count": state.entries.get(symbol, 0) < c.max_entries,
         "cooldown": symbol not in state.cooldowns or now >= state.cooldowns[symbol],
-        "atr": atr > 0 and q.ask > atr * c.stop_atr,
         "all_position_marks_fresh": all(
             s in state.mark_times
             and 0 <= (now - state.mark_times[s]).total_seconds() <= c.max_quote_age_seconds
             for s in state.positions
         ),
+    }
+
+
+def size_entry(
+    state: State,
+    symbol: str,
+    atr: Decimal,
+    q: Quote,
+    now: datetime,
+    session: Session,
+    c: TradingConfig,
+) -> tuple[Decimal, dict[str, bool]]:
+    equity = state.equity(c.exit_cost_bps)
+    pending = state.pending()
+    group = c.group_of(symbol)
+    checks = {
+        "allowlisted": symbol in c.symbols and q.symbol == symbol,
+        **entry_state_checks(state, symbol, now, session, c),
+        "atr": atr > 0 and q.ask > atr * c.stop_atr,
         **quote_checks(q, now, c),
     }
     price = q.ask * (1 + c.slippage_bps / 10000)

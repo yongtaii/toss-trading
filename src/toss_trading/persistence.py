@@ -32,6 +32,28 @@ outbox = Table(
     Column("status", String(20), nullable=False),
     Column("attempts", Integer, nullable=False, default=0),
 )
+worker_status = Table(
+    "paper_worker_status",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("payload", Text, nullable=False),
+)
+symbol_signals = Table(
+    "paper_symbol_signals",
+    metadata,
+    Column("symbol", String(32), primary_key=True),
+    Column("payload", Text, nullable=False),
+)
+
+
+def save_projection(conn, table, key: dict, payload: dict) -> None:
+    """The single PAPER writer owns these bounded monitoring projections."""
+    value = json.dumps(payload, default=str, sort_keys=True)
+    changed = conn.execute(
+        update(table).where(*(table.c[k] == v for k, v in key.items())).values(payload=value)
+    )
+    if not changed.rowcount:
+        conn.execute(table.insert().values(**key, payload=value))
 
 
 class ConcurrentUpdate(RuntimeError):
@@ -84,6 +106,21 @@ class Store:
             for record in records:
                 payload = json.dumps(record, default=str, sort_keys=True)
                 conn.execute(events.insert().values(payload=payload))
+                if record.get("symbol") and record.get("event") in {
+                    "DECISION",
+                    "ENTRY_REJECTED",
+                    "ORDER_SUBMITTED",
+                }:
+                    symbol = record["symbol"]
+                    existing = conn.execute(
+                        select(symbol_signals.c.payload).where(symbol_signals.c.symbol == symbol)
+                    ).scalar_one_or_none()
+                    projection = json.loads(existing) if existing else {}
+                    if record["event"] == "DECISION":
+                        projection["decision"] = record
+                    elif record.get("side") == "BUY":
+                        projection["entry"] = record
+                    save_projection(conn, symbol_signals, {"symbol": symbol}, projection)
                 if record.get("notify"):
                     conn.execute(
                         outbox.insert().values(payload=payload, status="PENDING", attempts=0)
@@ -96,6 +133,10 @@ class Store:
             state,
             [{"event": "API_ERROR", "time": datetime.now(UTC), "reason": reason, "notify": True}],
         )
+
+    def write_worker_status(self, payload: dict) -> None:
+        with self.engine.begin() as conn:
+            save_projection(conn, worker_status, {"id": 1}, payload)
 
     def close(self) -> None:
         self.engine.dispose()

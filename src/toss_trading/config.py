@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     toss_client_secret: SecretStr | None = None
     toss_account_seq: int | None = Field(default=None, gt=0)
     operations_api_key: SecretStr | None = Field(default=None, min_length=32)
+    dashboard_username: str = "admin"
+    dashboard_password: SecretStr | None = Field(default=None, min_length=16)
     paper_database_url: SecretStr = SecretStr("sqlite:///data/paper.db")
     slack_webhook_url: SecretStr | None = None
     strategy_config_path: str = "config/strategy.toml"
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
     @field_validator(
         "toss_account_seq",
         "operations_api_key",
+        "dashboard_password",
         "slack_webhook_url",
         "compare_config_path",
         "compare_database_url",

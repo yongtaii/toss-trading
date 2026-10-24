@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from toss_trading.adapters.toss import BrokerError, ConfigurationError, TossQueries
 from toss_trading.config import Settings
+from toss_trading.dashboard import dashboard_router
 from toss_trading.persistence import Store, events
 from toss_trading.ports import BrokerQueries
 from toss_trading.trading_config import load_config
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None, broker: BrokerQueries | None = 
                 await owned.aclose()
 
     app = FastAPI(title="Toss Trading — Read Only", version="0.1.0", lifespan=lifespan)
+    app.include_router(dashboard_router(settings))
 
     async def authorize(x_api_key: Annotated[str | None, Header()] = None) -> None:
         expected = settings.operations_api_key

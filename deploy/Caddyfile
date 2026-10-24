@@ -1,0 +1,20 @@
+{
+    email {$ACME_EMAIL}
+    admin off
+}
+
+{$DASHBOARD_DOMAIN} {
+    encode gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+    redir / /dashboard/ 302
+    handle /dashboard* {
+        reverse_proxy api:8000
+    }
+    handle {
+        respond "Not found" 404
+    }
+}
