@@ -88,11 +88,23 @@ heartbeat는 최근 `max(30초, poll 주기×3)` 내 기록이면 실행 중, �
 
 ## 전략 설정
 
-전략은 `vwap_mean_revert` 하나입니다. 완료된 5분봉 종가가 당일 VWAP보다
-`stretch_atr`(기본 1.5)×ATR14 이상 아래에 있으면 매수하고, 종가가 VWAP을 회복하면 청산합니다(VWAP_EXIT).
-손절은 체결가−2×ATR, 익절은 3R입니다. 7~9월 실데이터 재생에서는 수익이었으나 10월 검증 구간에서는
-손실이었으므로 PAPER로 전진 검증 중입니다([보고서 7절](docs/strategy-report.md)).
-이전 `vwap_breakout`은 같은 기간 PF 0.64로 손실이어서 제거했습니다.
+기본 설정은 `vwap_reversal`입니다. 완료된 5분봉에서 다음 조건을 모두 만족할 때 매수합니다.
+
+- 종가가 당일 VWAP보다 `stretch_atr`(기본 1.5)×ATR14 이상 아래에 있음
+- 현재 5분봉이 양봉이고 종가가 직전 완료 5분봉의 고가를 돌파함
+- VWAP까지의 회복 폭과 3R 익절 폭 중 작은 값이 예상 왕복 비용의 2배 이상임
+- 그 회복 폭에서 예상 비용을 뺀 값이 ATR 손절 폭 이상임
+
+예상 왕복 비용은 매수·매도 수수료·환전·매도 부과금, 양방향 슬리피지,
+허용 최대 스프레드를 포함해 보수적으로 계산합니다. `min_reversion_cost_multiple`로
+비용 배수를 설정합니다. VWAP 회복은 보장되지 않으며 조건을 만족하지 않으면 관망합니다.
+종가가 VWAP을 회복하면 청산하고(VWAP_EXIT), 손절은 체결가−2×ATR, 익절은 3R입니다.
+손절·일일 손실 한도·주문 금액 등 기존 리스크 규칙은 동일합니다.
+
+기존 `vwap_mean_revert`는 반등·회복 폭 검증 없이 과매도만으로 진입하는 비교 전략으로
+남겨 두었습니다. 수정 직전 설정은 `config/strategy-mean-revert.toml`, RSI 비교 설정은
+`config/strategy-rsi.toml`입니다. 과거 실데이터 검증 수치는 기존 전략의 기록이며,
+새 전략은 아직 실데이터로 검증하지 않았습니다([수정 분석](docs/strategy-report.md#9-장세별-합성-데이터-손실-분석과-전략-수정)).
 
 [config/strategy.toml](config/strategy.toml)에서 종목, 지표 기간, 이탈 폭,
 손절·익절, 비용, 데이터 유효 시간, 주문 금액, 장 마감 시간 등을 변경합니다.
@@ -194,6 +206,43 @@ uv run python -m toss_trading.backtest data/history.csv --split 2026-10-22 --out
 ```
 
 CSV 열: `symbol,end,open,high,low,close,volume`. `end`는 타임존이 있는 **1분봉 종료 시각**입니다.
+
+### 상승장·횡보장·하락장 일괄 백테스트
+
+```sh
+uv run python -m toss_trading.regimes
+# 다른 전략 설정으로 같은 세 장세 실행
+uv run python -m toss_trading.regimes --config config/strategy-rsi.toml --output data/regimes-rsi
+```
+
+수정 전후를 같은 입력 설정으로 비교하려면 결과 폴더를 나누세요.
+
+```sh
+uv run python -m toss_trading.regimes --config config/strategy-mean-revert.toml --output data/regimes-before
+uv run python -m toss_trading.regimes --config config/strategy.toml --output data/regimes-reversal
+```
+
+`config/backtest-regimes.toml`에서 세 장세를 설정합니다. 기본값은 상승장 하루 +0.6%,
+횡보장 0%, 하락장 -0.6%의 **합성 데이터**이며, 모든 장세에 장중 하락·반등을 넣었습니다.
+SOXL·TQQQ를 기준으로 장세를 정의하고 SOXS·SQQQ는 반대로 움직입니다.
+이는 실제 레버리지 ETF 수익률을 재현하는 모델이 아닙니다.
+휴장·조기 폐장을 반영한 22개 세션을 생성하므로 기본 거래량 지표의 전일 20일 이력도 확보합니다.
+첫 세션의 지표 워밍업 및 거래량 이력 부족은 기존 전략 규칙대로 처리합니다.
+
+각 장세는 동일한 전략·수수료·슬리피지·초기 자금으로 **독립 실행**합니다.
+`data/regimes/summary.json`에 수익률·MDD·승률·PF·거래 수·비용 차감 순손익과
+Buy & Hold 비교가 모이며, `bull/sideways/bear.json`에는 종목·그룹별 상세 결과와
+거래 로그가 저장됩니다. 생성 CSV도 같은 폴더에 저장되어 기존 `backtest` 명령으로
+기준선·민감도·walk-forward 검증을 추가할 수 있습니다.
+롱·인버스 균등 Buy & Hold는 상쇄될 수 있으므로 종목별 결과도 함께 확인하세요.
+거래가 없거나 100건 미만이면 표본 부족 경고가 표시됩니다.
+
+실제 시장 구간을 검증하려면 해당 장세의 선택 종목 전체 1분봉을 준비하고 각
+`[scenarios.bull]`, `[scenarios.sideways]`, `[scenarios.bear]`에
+`csv = "../data/history-bull.csv"`처럼 지정하세요. 경로는 TOML 파일 기준입니다.
+CSV를 지정한 장세는 합성 데이터 생성 없이 해당 CSV 전체를 재생합니다.
+장세 이름은 사용자가 지정한 구간의 라벨이며 자동 판별하지 않습니다.
+합성 설정의 `daily_return`·`intraday_swing`은 CSV 가격에 적용하지 않습니다.
 
 ### 외부 1분봉 CSV 검증·변환
 

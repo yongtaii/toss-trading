@@ -18,6 +18,8 @@ class TradingConfig(BaseModel):
     atr_period: int = Field(default=14, ge=2)
     # Entry: close below session VWAP minus this many 5-minute ATRs.
     stretch_atr: Decimal = Field(default=Decimal("1.5"), gt=0)
+    # Reversal entries require enough expected gross recovery to cover round-trip costs.
+    min_reversion_cost_multiple: Decimal = Field(default=Decimal("2"), ge=1)
     # Optional oversold filter: enter only when Wilder RSI <= this value. None disables it.
     rsi_period: int = Field(default=14, ge=2)
     rsi_entry_max: Decimal | None = Field(default=None, gt=0, lt=100)

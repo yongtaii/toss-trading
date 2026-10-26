@@ -1,0 +1,25 @@
+# Offline engine scenarios; synthetic prices are NOT historical market data.
+start = "2026-09-01"
+# 20 prior sessions for time-of-day volume history, plus 2 sessions with full history.
+sessions = 22
+
+# Market direction is defined for the long ETFs. Inverse ETFs move oppositely.
+[exposure]
+SOXL = 1
+SOXS = -1
+TQQQ = 1
+SQQQ = -1
+
+[scenarios.bull]
+daily_return = "0.006"
+intraday_swing = "0.012"
+# To use real data, set csv relative to this TOML file, e.g. "../data/bull.csv".
+# csv = "../data/history-bull.csv"
+
+[scenarios.sideways]
+daily_return = "0"
+intraday_swing = "0.012"
+
+[scenarios.bear]
+daily_return = "-0.006"
+intraday_swing = "0.012"

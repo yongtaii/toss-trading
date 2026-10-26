@@ -1,6 +1,9 @@
 # These are the user's selected symbols, not agent recommendations.
 mode = "PAPER"
-strategy_name = "vwap_mean_revert"
+strategy_name = "vwap_reversal"
+# Require a completed 5m rebound and gross recovery >= 2x round-trip costs.
+# Also require recovery after costs to cover the ATR stop distance.
+min_reversion_cost_multiple = "2"
 symbols = ["SOXL", "SOXS", "TQQQ", "SQQQ"]
 initial_cash = "10000"
 ema_fast = 9

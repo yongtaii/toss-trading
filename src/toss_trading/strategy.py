@@ -207,6 +207,43 @@ class VwapMeanRevert(VwapIndicators):
         return Decision(signal, checks, ind, base.notes)
 
 
+class VwapReversal(VwapMeanRevert):
+    """Buy a confirmed rebound below VWAP only when recovery can pay for the risk.
+
+    Uses completed bars only. Risk/fees are unchanged; VWAP is a prospective exit,
+    not a guarantee that price will recover. The original strategy remains available.
+    """
+
+    def decide(self, minutes: list[Bar], session: Session, base: Decision) -> Decision:
+        current = super().decide(minutes, session, base)
+        ind, c = base.indicators, self.config
+        candles = aggregate(minutes[-10:])
+        reversal = len(candles) == 2 and (
+            candles[-1].close > candles[-2].high and candles[-1].close > candles[-1].open
+        )
+        # Include both directions of slippage/charges and a conservative full spread.
+        # TAF per-share is an upper bound when the per-order cap would apply.
+        costs = (
+            ind.close
+            * (c.entry_cost_bps + c.exit_cost_bps + 2 * c.slippage_bps + c.max_spread_bps)
+            / 10000
+            + c.taf_per_share
+        )
+        stop_distance = c.stop_atr * ind.atr
+        recovery = min(ind.vwap - ind.close, c.reward_r * stop_distance)
+        checks = {
+            **current.checks,
+            "confirmed_reversal": reversal,
+            "recovery_covers_costs": recovery >= costs * c.min_reversion_cost_multiple,
+            "net_reward_covers_stop": recovery - costs >= stop_distance,
+        }
+        if current.signal == "VWAP_EXIT":
+            return Decision("VWAP_EXIT", checks, ind, current.notes)
+        return Decision(
+            "BUY_SIGNAL" if all(checks.values()) else "WAIT", checks, ind, current.notes
+        )
+
+
 class VwapCrossBaseline(VwapIndicators):
     """Baseline: buy the first close back above VWAP; exit when close drops below it."""
 
@@ -245,5 +282,9 @@ class RandomEntryBaseline(VwapMeanRevert):
 
 def create_strategy(name: str, config: TradingConfig) -> Strategy:
     # Explicit registry; never discovers or installs arbitrary remote packages.
-    registry = {"vwap_mean_revert": VwapMeanRevert, "vwap_only": VwapCrossBaseline}
+    registry = {
+        "vwap_mean_revert": VwapMeanRevert,
+        "vwap_reversal": VwapReversal,
+        "vwap_only": VwapCrossBaseline,
+    }
     return registry[name](config)
