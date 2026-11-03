@@ -52,8 +52,6 @@ def symbol_view(
     )
     gates["worker_running"] = worker["status"] == "running"
     gates["market_data_ready"] = worker.get("market_data_status") == "success"
-    threshold = None
-    distance = None
     source, direction, _ = config.signal_source(symbol)
     failed_checks = [key for key, ok in decision.get("checks", {}).items() if not ok]
     failed_gates = [key for key, ok in gates.items() if not ok]
@@ -69,11 +67,14 @@ def symbol_view(
         status = "waiting"
     else:
         status = "signal"
+    mark = state.marks.get(symbol)
     return {
         "symbol": symbol,
         "signal_symbol": source,
         "signal_direction": direction,
         "status": status,
+        "mark": str(mark) if mark is not None else None,
+        "mark_time": mark_at,
         "decision_at": at,
         "decision_fresh": fresh,
         "signal": decision.get("signal"),
@@ -82,9 +83,6 @@ def symbol_view(
         "gates": gates,
         "failed_checks": failed_checks,
         "failed_gates": failed_gates,
-        "entry_below": str(threshold) if threshold is not None and direction == 1 else None,
-        "entry_above": str(threshold) if threshold is not None and direction == -1 else None,
-        "distance_to_entry": str(distance) if distance is not None else None,
         "cooldown_until": state.cooldowns.get(symbol),
         "last_entry": saved.get("entry"),
     }
@@ -223,7 +221,6 @@ def dashboard_router(settings: Settings) -> APIRouter:
                 "engine_status": "unknown"
                 if age is None
                 else ("recent" if age <= max(180, config.paper_poll_seconds * 4) else "delayed"),
-                "session": state.session.model_dump(mode="json") if state.session else None,
                 "loss_halted": state.loss_halted,
                 "worker": worker,
                 "market": market,
@@ -244,10 +241,6 @@ def dashboard_router(settings: Settings) -> APIRouter:
                     "return_pct": str((equity / config.initial_cash - 1) * 100),
                     "reserved": str(sum((o.reserved for o in state.pending()), Decimal(0))),
                 },
-                "symbols": [
-                    {"symbol": s, "mark": state.marks.get(s), "mark_time": state.mark_times.get(s)}
-                    for s in config.symbols
-                ],
                 "positions": positions,
                 "orders": [o.model_dump(mode="json") for o in state.pending()],
                 "trades": state.trades,

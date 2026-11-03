@@ -1,4 +1,4 @@
-# Selected offline default: research/picks/legacy_weekly.json
+# Selected offline default: research/picks/target30.json
 # Disabled runtime placeholder for common API/ledger infrastructure.
 # The five retained strategies are research/picks/*.json, not PAPER/LIVE configs.
 mode = "PAPER"
