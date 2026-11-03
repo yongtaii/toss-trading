@@ -54,9 +54,7 @@ def symbol_view(
     gates["market_data_ready"] = worker.get("market_data_status") == "success"
     threshold = None
     distance = None
-    if indicators and config.strategy_name == "vwap_mean_revert":
-        threshold = Decimal(indicators["vwap"]) - config.stretch_atr * Decimal(indicators["atr"])
-        distance = max(Decimal(0), Decimal(indicators["close"]) - threshold)
+    source, direction, _ = config.signal_source(symbol)
     failed_checks = [key for key, ok in decision.get("checks", {}).items() if not ok]
     failed_gates = [key for key, ok in gates.items() if not ok]
     if not market["is_open"]:
@@ -73,6 +71,8 @@ def symbol_view(
         status = "signal"
     return {
         "symbol": symbol,
+        "signal_symbol": source,
+        "signal_direction": direction,
         "status": status,
         "decision_at": at,
         "decision_fresh": fresh,
@@ -82,7 +82,8 @@ def symbol_view(
         "gates": gates,
         "failed_checks": failed_checks,
         "failed_gates": failed_gates,
-        "entry_below": str(threshold) if threshold is not None else None,
+        "entry_below": str(threshold) if threshold is not None and direction == 1 else None,
+        "entry_above": str(threshold) if threshold is not None and direction == -1 else None,
         "distance_to_entry": str(distance) if distance is not None else None,
         "cooldown_until": state.cooldowns.get(symbol),
         "last_entry": saved.get("entry"),

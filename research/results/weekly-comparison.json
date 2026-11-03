@@ -1,0 +1,608 @@
+{
+  "description": "Retained five weekly SMA20/200 policies; whole-account price returns after model costs",
+  "initial_cash_usd": 1490,
+  "evaluation_end": "2026-10-30",
+  "historical_reuse": true,
+  "independent_validation": false,
+  "source_sha256": {
+    "2021-04-01_2022-12-30-raw-1d.csv": "ad20c623b62c6ff7b2df8392e9b25c3a0fac5370386cfc39bc7fe695b482e4ff",
+    "2022-11-01_2023-12-29-raw-1d.csv": "52ce848bdee315018a7bc88589ca99163c802abb014ba288abffea5d1dff8f90",
+    "2024-03-08_2025-10-31-raw-1d.csv": "08b803e8ed71668c65ef6c5cfcaeb9b9e927923ad0a3504c7c12bfac300632ed",
+    "2025-05-01_2026-10-30-raw-1d.csv": "45beb40467ca724d550d56c832b0a05278a79deeb50b5b0def12bd6f5865c589"
+  },
+  "periods": {
+    "bear2022": [
+      "2022-06-01",
+      "2022-12-30"
+    ],
+    "year2023": [
+      "2023-01-03",
+      "2023-12-29"
+    ],
+    "year2025": [
+      "2025-01-02",
+      "2025-10-31"
+    ],
+    "year2026": [
+      "2026-01-02",
+      "2026-10-30"
+    ],
+    "recent2026": [
+      "2026-08-03",
+      "2026-10-30"
+    ]
+  },
+  "cleanup_regression": {
+    "exact_full_ledger_matches": 50,
+    "cases": [
+      "bear2022:legacy_weekly:cost1",
+      "bear2022:legacy_weekly:cost2",
+      "bear2022:target90:cost1",
+      "bear2022:target90:cost2",
+      "bear2022:target95:cost1",
+      "bear2022:target95:cost2",
+      "bear2022:target99:cost1",
+      "bear2022:target99:cost2",
+      "bear2022:target100:cost1",
+      "bear2022:target100:cost2",
+      "year2023:legacy_weekly:cost1",
+      "year2023:legacy_weekly:cost2",
+      "year2023:target90:cost1",
+      "year2023:target90:cost2",
+      "year2023:target95:cost1",
+      "year2023:target95:cost2",
+      "year2023:target99:cost1",
+      "year2023:target99:cost2",
+      "year2023:target100:cost1",
+      "year2023:target100:cost2",
+      "year2025:legacy_weekly:cost1",
+      "year2025:legacy_weekly:cost2",
+      "year2025:target90:cost1",
+      "year2025:target90:cost2",
+      "year2025:target95:cost1",
+      "year2025:target95:cost2",
+      "year2025:target99:cost1",
+      "year2025:target99:cost2",
+      "year2025:target100:cost1",
+      "year2025:target100:cost2",
+      "year2026:legacy_weekly:cost1",
+      "year2026:legacy_weekly:cost2",
+      "year2026:target90:cost1",
+      "year2026:target90:cost2",
+      "year2026:target95:cost1",
+      "year2026:target95:cost2",
+      "year2026:target99:cost1",
+      "year2026:target99:cost2",
+      "year2026:target100:cost1",
+      "year2026:target100:cost2",
+      "recent2026:legacy_weekly:cost1",
+      "recent2026:legacy_weekly:cost2",
+      "recent2026:target90:cost1",
+      "recent2026:target90:cost2",
+      "recent2026:target95:cost1",
+      "recent2026:target95:cost2",
+      "recent2026:target99:cost1",
+      "recent2026:target99:cost2",
+      "recent2026:target100:cost1",
+      "recent2026:target100:cost2"
+    ]
+  },
+  "audit": {
+    "replays": 50,
+    "target_fill_rows": 2515,
+    "target_realization_rows": 1290
+  },
+  "results": {
+    "bear2022": {
+      "legacy_weekly": {
+        "1": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        },
+        "2": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        }
+      },
+      "target90": {
+        "1": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        },
+        "2": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        }
+      },
+      "target95": {
+        "1": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        },
+        "2": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        }
+      },
+      "target99": {
+        "1": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        },
+        "2": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        }
+      },
+      "target100": {
+        "1": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        },
+        "2": {
+          "total_return": 0.0,
+          "net_pnl": 0.0,
+          "mdd_close": 0.0,
+          "trades": 0,
+          "sessions": 148,
+          "average_allocation": 0.0,
+          "fees": 0
+        }
+      }
+    },
+    "year2023": {
+      "legacy_weekly": {
+        "1": {
+          "total_return": 0.11373507985924158,
+          "net_pnl": 169.46526899027003,
+          "mdd_close": 0.044744907150080504,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.11246195125936444,
+          "fees": 9.18391967973
+        },
+        "2": {
+          "total_return": 0.09077082046810725,
+          "net_pnl": 135.24852249747983,
+          "mdd_close": 0.04233813845020107,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.10098662269509161,
+          "fees": 16.266892642520002
+        }
+      },
+      "target90": {
+        "1": {
+          "total_return": 1.215796256993722,
+          "net_pnl": 1811.5364229206457,
+          "mdd_close": 0.2447361675625257,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.6998412550603134,
+          "fees": 88.79319856434971
+        },
+        "2": {
+          "total_return": 1.0796010856392622,
+          "net_pnl": 1608.6056176025008,
+          "mdd_close": 0.2559054481344716,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.6987709736193853,
+          "fees": 170.55060905749542
+        }
+      },
+      "target95": {
+        "1": {
+          "total_return": 1.2866021699686851,
+          "net_pnl": 1917.0372332533407,
+          "mdd_close": 0.25878123811834564,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7378028356560868,
+          "fees": 95.27118625165424
+        },
+        "2": {
+          "total_return": 1.1513546113124398,
+          "net_pnl": 1715.518370855535,
+          "mdd_close": 0.2700077444798099,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7384759401394329,
+          "fees": 183.0423203444587
+        }
+      },
+      "target99": {
+        "1": {
+          "total_return": 1.3418025382265575,
+          "net_pnl": 1999.2857819575706,
+          "mdd_close": 0.269795747247644,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7698834590005218,
+          "fees": 100.88910666742386
+        },
+        "2": {
+          "total_return": 1.210295442479202,
+          "net_pnl": 1803.340209294011,
+          "mdd_close": 0.27957610507817543,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7681366064193651,
+          "fees": 193.93437333598544
+        }
+      },
+      "target100": {
+        "1": {
+          "total_return": 1.3625826306558269,
+          "net_pnl": 2030.2481196771819,
+          "mdd_close": 0.27271474698941767,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7779169642320257,
+          "fees": 102.48345965281267
+        },
+        "2": {
+          "total_return": 1.2022776810622107,
+          "net_pnl": 1791.3937447826938,
+          "mdd_close": 0.28399983479338586,
+          "trades": 38,
+          "sessions": 250,
+          "average_allocation": 0.7778326619518139,
+          "fees": 195.80353534730244
+        }
+      }
+    },
+    "year2025": {
+      "legacy_weekly": {
+        "1": {
+          "total_return": 0.10033445458557044,
+          "net_pnl": 149.4983373324999,
+          "mdd_close": 0.017866861503020748,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.06342908480745826,
+          "fees": 3.7100746675
+        },
+        "2": {
+          "total_return": 0.09666231230201316,
+          "net_pnl": 144.02684532999956,
+          "mdd_close": 0.018474869059557086,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.06353963468565939,
+          "fees": 7.23997867
+        }
+      },
+      "target90": {
+        "1": {
+          "total_return": 0.857266355006709,
+          "net_pnl": 1277.3268689599963,
+          "mdd_close": 0.18036458751847162,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5396574804411866,
+          "fees": 37.0134667900022
+        },
+        "2": {
+          "total_return": 0.7982333649423583,
+          "net_pnl": 1189.367713764114,
+          "mdd_close": 0.1817444252057181,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.53621671906171,
+          "fees": 73.3274707358846
+        }
+      },
+      "target95": {
+        "1": {
+          "total_return": 0.8934102959372712,
+          "net_pnl": 1331.181340946534,
+          "mdd_close": 0.19032433134681948,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5658540252156357,
+          "fees": 39.2970870534635
+        },
+        "2": {
+          "total_return": 0.8349504133999388,
+          "net_pnl": 1244.0761159659087,
+          "mdd_close": 0.194040612881608,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5642815211913949,
+          "fees": 76.24762403409001
+        }
+      },
+      "target99": {
+        "1": {
+          "total_return": 0.9625035382441187,
+          "net_pnl": 1434.1302719837367,
+          "mdd_close": 0.19908121829730074,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5940273372114339,
+          "fees": 41.69651376625995
+        },
+        "2": {
+          "total_return": 0.9040779884071006,
+          "net_pnl": 1347.07620272658,
+          "mdd_close": 0.19323057453495263,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5909034059775261,
+          "fees": 81.9607087734188
+        }
+      },
+      "target100": {
+        "1": {
+          "total_return": 0.9744864754234723,
+          "net_pnl": 1451.9848483809737,
+          "mdd_close": 0.19908121829730074,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5983873120731985,
+          "fees": 41.73953811902315
+        },
+        "2": {
+          "total_return": 0.9018778002566135,
+          "net_pnl": 1343.797922382354,
+          "mdd_close": 0.20304119423800326,
+          "trades": 18,
+          "sessions": 209,
+          "average_allocation": 0.5985018766001599,
+          "fees": 82.5610021176446
+        }
+      }
+    },
+    "year2026": {
+      "legacy_weekly": {
+        "1": {
+          "total_return": 0.11732119157939658,
+          "net_pnl": 174.80857545330082,
+          "mdd_close": 0.02231342825463445,
+          "trades": 33,
+          "sessions": 209,
+          "average_allocation": 0.06866202432872259,
+          "fees": 6.6960442467
+        },
+        "2": {
+          "total_return": 0.09709301085409394,
+          "net_pnl": 144.66858617259982,
+          "mdd_close": 0.022699878055117972,
+          "trades": 32,
+          "sessions": 209,
+          "average_allocation": 0.06158791900517462,
+          "fees": 11.316269527400001
+        }
+      },
+      "target90": {
+        "1": {
+          "total_return": 0.40415480326249154,
+          "net_pnl": 602.1906568611125,
+          "mdd_close": 0.4570396646234526,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.6479853199781861,
+          "fees": 111.63983263887982
+        },
+        "2": {
+          "total_return": 0.2682959986980997,
+          "net_pnl": 399.76103806016863,
+          "mdd_close": 0.48184846623774913,
+          "trades": 49,
+          "sessions": 209,
+          "average_allocation": 0.6521007069370166,
+          "fees": 208.95300793982577
+        }
+      },
+      "target95": {
+        "1": {
+          "total_return": 0.4091158759275544,
+          "net_pnl": 609.5826551320561,
+          "mdd_close": 0.49105859373581306,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.6889514650781264,
+          "fees": 120.56459606793642
+        },
+        "2": {
+          "total_return": 0.30019769839061916,
+          "net_pnl": 447.29457060202253,
+          "mdd_close": 0.4934193535846221,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.6835921056532613,
+          "fees": 226.60659289797286
+        }
+      },
+      "target99": {
+        "1": {
+          "total_return": 0.425859575001007,
+          "net_pnl": 634.5307667515003,
+          "mdd_close": 0.4894675860402524,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.7142847908671579,
+          "fees": 127.97228774849408
+        },
+        "2": {
+          "total_return": 0.2051057096500939,
+          "net_pnl": 305.60750737863987,
+          "mdd_close": 0.5388932099311431,
+          "trades": 49,
+          "sessions": 209,
+          "average_allocation": 0.7174366738569313,
+          "fees": 235.49396512135397
+        }
+      },
+      "target100": {
+        "1": {
+          "total_return": 0.4155345618897337,
+          "net_pnl": 619.1464972157032,
+          "mdd_close": 0.4966576948760725,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.7192469635221063,
+          "fees": 128.29644203429118
+        },
+        "2": {
+          "total_return": 0.33423010530701713,
+          "net_pnl": 498.00285690745545,
+          "mdd_close": 0.5120374527257456,
+          "trades": 50,
+          "sessions": 209,
+          "average_allocation": 0.7204665989994892,
+          "fees": 249.2940184925376
+        }
+      }
+    },
+    "recent2026": {
+      "legacy_weekly": {
+        "1": {
+          "total_return": 0.0406638978478191,
+          "net_pnl": 60.58920779325035,
+          "mdd_close": 0.015245835689310261,
+          "trades": 11,
+          "sessions": 64,
+          "average_allocation": 0.06235908124280681,
+          "fees": 2.05565995675
+        },
+        "2": {
+          "total_return": 0.03863992327046972,
+          "net_pnl": 57.57348567300005,
+          "mdd_close": 0.015441413869805132,
+          "trades": 11,
+          "sessions": 64,
+          "average_allocation": 0.062418818119749704,
+          "fees": 4.0012498270000005
+        }
+      },
+      "target90": {
+        "1": {
+          "total_return": 0.07763331407183172,
+          "net_pnl": 115.67363796702921,
+          "mdd_close": 0.24509432644976126,
+          "trades": 17,
+          "sessions": 64,
+          "average_allocation": 0.6472859841626158,
+          "fees": 24.7910068829693
+        },
+        "2": {
+          "total_return": 0.0349875223251368,
+          "net_pnl": 52.13140826445397,
+          "mdd_close": 0.24995892010630916,
+          "trades": 17,
+          "sessions": 64,
+          "average_allocation": 0.6369289063178731,
+          "fees": 47.50420513554511
+        }
+      },
+      "target95": {
+        "1": {
+          "total_return": 0.030970954852294286,
+          "net_pnl": 46.146722729918565,
+          "mdd_close": 0.2539913930332407,
+          "trades": 16,
+          "sessions": 64,
+          "average_allocation": 0.6830591322614696,
+          "fees": 23.4089035700797
+        },
+        "2": {
+          "total_return": -0.0031053861854886122,
+          "net_pnl": -4.627025416378046,
+          "mdd_close": 0.2603788029501227,
+          "trades": 16,
+          "sessions": 64,
+          "average_allocation": 0.6873514582899483,
+          "fees": 46.178242016377006
+        }
+      },
+      "target99": {
+        "1": {
+          "total_return": 0.05843264972986684,
+          "net_pnl": 87.0646480975015,
+          "mdd_close": 0.2722324382493222,
+          "trades": 17,
+          "sessions": 64,
+          "average_allocation": 0.709435765868372,
+          "fees": 27.272284602497
+        },
+        "2": {
+          "total_return": 0.03221173893923379,
+          "net_pnl": 47.99549101945831,
+          "mdd_close": 0.27986653410783235,
+          "trades": 17,
+          "sessions": 64,
+          "average_allocation": 0.712238876768826,
+          "fees": 53.9943824805406
+        }
+      },
+      "target100": {
+        "1": {
+          "total_return": 0.03507482969406572,
+          "net_pnl": 52.261496244158025,
+          "mdd_close": 0.277808842894965,
+          "trades": 16,
+          "sessions": 64,
+          "average_allocation": 0.7372211426127016,
+          "fees": 25.99769775583983
+        },
+        "2": {
+          "total_return": 0.03400183877131435,
+          "net_pnl": 50.66273976925822,
+          "mdd_close": 0.27950204889290375,
+          "trades": 17,
+          "sessions": 64,
+          "average_allocation": 0.715094914973829,
+          "fees": 53.9890586307406
+        }
+      }
+    }
+  },
+  "default_policy": "legacy_weekly"
+}

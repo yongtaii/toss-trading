@@ -23,7 +23,12 @@ from toss_trading.trading_config import load_config
 
 
 async def poll_once(
-    engines: list[TradingEngine], broker: TossQueries, monitor: WorkerMonitor | None = None
+    engines: list[TradingEngine],
+    broker: TossQueries,
+    monitor: WorkerMonitor | None = None,
+    *,
+    allow_entries: bool = True,
+    flatten: bool = False,
 ) -> None:
     """Fetch market data once and feed every engine; each keeps its own ledger."""
     now = datetime.now(UTC)
@@ -53,24 +58,27 @@ async def poll_once(
             engine.step(now, session, [], [])
         monitor.finish_poll(failures, market_data="error" if failures else "closed")
         return
-    symbols = list(dict.fromkeys(s for engine in engines for s in engine.config.symbols))
-    # A fresh ledger has no prior session for indicator warmup: fetch it once per day.
-    pending = [(engine, engine.needs_prior(session)) for engine in engines]
+    symbols = list(dict.fromkeys(s for engine in engines for s in engine.config.market_symbols))
+    signal_symbols = list(
+        dict.fromkeys(s for engine in engines for s in engine.config.signal_symbols)
+    )
+    # Fetch missing warmup; failed/incomplete source history is retried after 60s.
+    pending = [(engine, engine.needs_prior(session, now)) for engine in engines]
     pending = [(engine, prior) for engine, prior in pending if prior]
     if pending:
         monitor.phase("prior_session")
         prior, history = pending[0][1], []
         try:
-            for symbol in symbols:
+            for symbol in signal_symbols:
                 history.extend(await fetch_minutes(broker, symbol, prior, prior.close))
         except (BrokerError, ValueError, KeyError, TypeError):
             history = []  # Strategy falls back to intraday-only and logs WARMUP_FALLBACK.
             failures.append("Prior session candles unavailable; intraday-only warmup")
         for engine, _ in pending:
-            engine.seed_prior(prior, history)
+            engine.seed_prior(prior, history, datetime.now(UTC))
     bars, quotes = [], []
     monitor.phase("candles")
-    for symbol in symbols:
+    for symbol in signal_symbols:
         try:
             bars.extend(
                 await fetch_minutes(broker, symbol, session, minute_cutoff(datetime.now(UTC)))
@@ -88,13 +96,14 @@ async def poll_once(
     for engine in engines:
         for failure in failures:
             engine.store.record_error(failure)
-        allowed = engine.config.symbols
+        allowed = engine.config.market_symbols
         records = engine.step(
             datetime.now(UTC),
             session,
             [b for b in bars if b.symbol in allowed],
             [q for q in quotes if q.symbol in allowed],
-            allow_entries=not failures,
+            allow_entries=allow_entries and not failures,
+            flatten=flatten,
         )
         for record in records:
             record = {"strategy": engine.config.strategy_name, **record}
@@ -103,10 +112,10 @@ async def poll_once(
     checked_at = datetime.now(UTC)
     freshness_errors = []
     for engine in engines:
-        for symbol in engine.config.symbols:
+        for symbol in engine.config.market_symbols:
             latest = max((b.end for b in bars if b.symbol == symbol), default=None)
             quote = next((q for q in quotes if q.symbol == symbol), None)
-            if (
+            if symbol in engine.config.signal_symbols and (
                 latest is None
                 or not 0
                 <= (checked_at - latest).total_seconds()
@@ -133,6 +142,10 @@ async def run(args) -> None:
     try:
         for path, url in ledgers:
             config = load_config(path)
+            if config.strategy_name == "research_only":
+                raise ValueError(
+                    "Retained weekly strategies are offline only; PAPER integration is pending"
+                )
             if config.mode != "PAPER":
                 raise ValueError("Runner permits PAPER only; LIVE has not been certified")
             stores.append(Store(url.get_secret_value(), config))

@@ -1,7 +1,7 @@
 [project]
 name = "toss-trading"
 version = "0.1.0"
-description = "Rule-based US intraday PAPER trading with Toss Securities read-only integration"
+description = "Weekly ETF strategy research with Toss Securities read-only integration"
 requires-python = ">=3.12"
 dependencies = [
     "exchange-calendars>=4.5,<5",
@@ -10,6 +10,7 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.7,<3",
     "sqlalchemy>=2.0,<2.1",
+    "truststore>=0.10,<1",
     "uvicorn>=0.34,<1",
 ]
 

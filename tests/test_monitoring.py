@@ -6,6 +6,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -199,15 +200,9 @@ def test_latest_decision_survives_more_than_100_other_events(store, config, sess
         data = client.get("/dashboard/data", auth=("admin", PASSWORD)).json()
     assert len(data["events"]) == 100
     symbol = data["entry_conditions"][0]
-    assert Decimal(symbol["indicators"]["atr"]) > 0
+    assert symbol["indicators"] == {}
     assert datetime.fromisoformat(symbol["decision_at"]) == now
-    expected = Decimal(symbol["indicators"]["vwap"]) - config.stretch_atr * Decimal(
-        symbol["indicators"]["atr"]
-    )
-    assert Decimal(symbol["entry_below"]) == expected
-    assert symbol["checks"]["stretched_below_vwap"] is True
-    assert symbol["gates"]["no_pending"] is False
-    assert symbol["last_entry"]["event"] == "ORDER_SUBMITTED"
+    assert symbol["checks"]["research_only"] is False
 
 
 def test_live_gates_cover_cooldown_opposing_group_and_stale_decisions(default_config, session):
@@ -258,7 +253,7 @@ def test_old_ledger_reads_without_monitoring_tables_and_upgrades_on_worker_start
         reopened.close()
 
 
-async def test_runner_once_marks_worker_stopped_and_closes_broker(store, monkeypatch):
+async def test_research_only_runner_refuses_before_opening_broker(store, monkeypatch):
     from toss_trading.runner import run
 
     settings = dashboard_settings(store)
@@ -275,13 +270,10 @@ async def test_runner_once_marks_worker_stopped_and_closes_broker(store, monkeyp
     )
     monkeypatch.setattr("toss_trading.runner.Settings", lambda: settings)
     monkeypatch.setattr("toss_trading.runner.TossQueries", lambda _: broker)
-    await run(SimpleNamespace(config=None, once=True, slack=False))
-    broker.aclose.assert_awaited_once()
-    with store.engine.connect() as conn:
-        payload = json.loads(conn.execute(select(worker_status.c.payload)).scalar_one())
-    assert payload["phase"] == "stopped"
-    assert payload["stopped_at"]
-    assert payload["last_calendar_success"]
+    with pytest.raises(ValueError, match="offline only"):
+        await run(SimpleNamespace(config=None, once=True, slack=False))
+    broker.market_calendar.assert_not_awaited()
+    broker.aclose.assert_not_awaited()
 
 
 def test_comparison_monitoring_is_isolated_from_primary(store, config, tmp_path):

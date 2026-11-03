@@ -1,0 +1,17 @@
+# Infrastructure example only. Weekly strategies are offline research.
+# LiveConfig.strategy() refuses activation until a separate integration is implemented.
+enabled = false
+# Required values, deliberately not prefilled:
+# account_seq = ...
+# capital_usd = "..."
+# max_order_usd = "..."
+# daily_loss_usd = "..."
+strategy_path = "config/strategy.toml"
+database_url = "sqlite:///data/live.db"
+control_path = "data/live-control.json"
+max_verification_age_seconds = 30
+max_entry_age_seconds = 10
+
+# Explicit existing holdings outside the four trade symbols, if acknowledged.
+# [protected_positions]
+# TLT = "0.1"

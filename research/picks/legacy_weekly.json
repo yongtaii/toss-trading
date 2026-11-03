@@ -1,0 +1,26 @@
+{
+  "name": "legacy_weekly",
+  "mode": "OFFLINE_RESEARCH",
+  "initial_cash_usd": 1490,
+  "trade_symbols": [
+    "SOXL",
+    "TQQQ"
+  ],
+  "source_symbols": [
+    "SOXX",
+    "QQQ"
+  ],
+  "signal": "Prior completed daily close > SMA200 and SMA20 > SMA200; first actual ISO-week session only",
+  "target_allocation": null,
+  "rebalance": false,
+  "stop_close_fraction": 0.06,
+  "take_profit_close_fraction": 0.18,
+  "exit_execution": "Next regular open; not an intraday stop",
+  "maximum_held_sessions": 20,
+  "costs": "10bp commission + 5bp slippage + 0.5bp half spread per side; SEC0.206bp/min$0.01 sell",
+  "status": "RESEARCH_ONLY_NOT_CONNECTED_TO_PAPER_OR_LIVE",
+  "risk_budget_fraction": 0.005,
+  "max_buy_including_fee_usd": 298,
+  "display_name": "기본 전략",
+  "is_default": true
+}

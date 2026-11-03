@@ -10,6 +10,7 @@ class Execution(Protocol):
     def reconcile(self, state: State) -> None: ...
     def submit(self, state: State, order: Order) -> None: ...
     def process(self, state: State, quote: Quote, now: datetime) -> list[dict]: ...
+    def cancel(self, state: State, order: Order) -> None: ...
 
 
 class PaperExecution:
@@ -40,6 +41,9 @@ class PaperExecution:
             if order.quantity > state.positions[order.symbol].quantity:
                 raise ValueError("Oversell blocked")
         state.orders[order.id] = order
+
+    def cancel(self, state: State, order: Order) -> None:
+        order.status, order.reserved = OrderStatus.CANCELLED, ZERO
 
     def process(self, state: State, quote: Quote, now: datetime) -> list[dict]:
         c = self.config
@@ -113,6 +117,18 @@ class PaperExecution:
                         opened=now,
                         initial_risk=risk,
                         entry_slippage=slippage,
+                        signal_symbol=order.signal_symbol,
+                        signal_direction=order.signal_direction,
+                        signal_stop=(
+                            order.signal_entry
+                            - order.signal_direction * c.stop_atr * order.signal_atr
+                        ),
+                        signal_target=(
+                            order.signal_entry
+                            + order.signal_direction * c.reward_r * c.stop_atr * order.signal_atr
+                        ),
+                        signal_entry=order.signal_entry,
+                        signal_risk=c.stop_atr * order.signal_atr,
                     )
                     state.entries[order.symbol] = state.entries.get(order.symbol, 0) + 1
                 order.reserved = max(ZERO, order.reserved - total)
@@ -140,6 +156,10 @@ class PaperExecution:
                         "exit_fee": str(fee),
                         "slippage": str(allocated_slippage + slippage),
                         "reason": order.reason,
+                        "signal_symbol": position.signal_symbol or order.symbol,
+                        "signal_direction": position.signal_direction,
+                        "signal_stop": str(position.signal_stop),
+                        "signal_target": str(position.signal_target),
                     }
                 )
                 position.quantity -= quantity

@@ -112,28 +112,6 @@ def test_paper_status_api_existing_query_compatibility(settings, config, session
         assert client.post("/v1/orders", headers=headers).status_code == 405
 
 
-def test_engine_vwap_exit_uses_completed_candle(config, session, store):
-    rows = minutes(session)
-    rows[-5:] = [
-        bar.model_copy(
-            update={"open": D("30"), "high": D("30.01"), "low": D("29.99"), "close": D("30")}
-        )
-        for bar in rows[-5:]
-    ]
-    now = rows[-1].end
-    engine = TradingEngine(config, store)
-    state = account(session)
-    p = position(session.open)
-    p.stop, p.target = D("10"), D("40")
-    state.positions["SOXL"] = p
-    state.cash -= 250
-    save(store, state)
-    engine.step(now, session, rows[:-1], [quote(now, price="30")])
-    assert not store.load()[1].orders
-    engine.step(now, session, rows[-1:], [quote(now, price="30")])
-    assert store.load()[1].pending()[0].reason == "VWAP_EXIT"
-
-
 @pytest.mark.parametrize("kind", ["stale", "missing", "disabled", "disallowed"])
 def test_entry_signal_execution_gate(config, session, store, kind):
     rows = minutes(session)
@@ -197,18 +175,6 @@ def test_gap_does_not_allow_entry_and_missing_calendar_does_not_fill(config, ses
     save(store, state)
     engine.step(now + timedelta(seconds=1), None, [], [quote(now + timedelta(seconds=1))])
     assert not store.load()[1].positions
-
-
-def test_exact_volume_ratio_and_wilder_atr(config, session):
-    from toss_trading.strategy import VwapMeanRevert
-
-    rows = minutes(session)
-    for bar in rows[-5:]:
-        bar.volume = D(150)
-    result = VwapMeanRevert(config).evaluate(rows, session)
-    assert result.indicators.volume_ratio == D("1.5")
-    # Monotonic 0.01/min fall -> 0.05 close delta + 0.005 lower wick per 5m.
-    assert result.indicators.atr == D("0.055")
 
 
 async def test_poll_failure_suspends_entries_but_preserves_exit_loop(
@@ -335,7 +301,7 @@ def test_compare_ledger_settings_and_api(settings, config, store, tmp_path):
     from toss_trading.config import Settings
 
     with pytest.raises(ValueError, match="both"):
-        Settings(_env_file=None, compare_config_path="config/strategy-mean-revert.toml")
+        Settings(_env_file=None, compare_config_path="config/comparison-placeholder.toml")
     with pytest.raises(ValueError, match="separate"):
         Settings(
             _env_file=None,
@@ -389,4 +355,4 @@ async def test_runner_seeds_prior_session_once_and_falls_back_on_failure(
     assert engine.store.state.prior_day == "2026-10-16"  # Friday before Monday 10-19.
     assert engine.store.state.prior_bars == {}  # Fetch failed: strategy falls back.
     await poll_once([engine], broker)
-    assert broker.candles.call_count - first == 4  # Today's bars only; no prior refetch.
+    assert broker.candles.call_count - first == 2  # Today's bars only; no prior refetch.

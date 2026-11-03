@@ -1,25 +1,18 @@
-"""Offline one-minute CSV replay using the same strategy/risk/engine as PAPER."""
+"""Common minute replay utilities for explicitly injected strategies, without a strategy CLI."""
 
-import argparse
 import csv
-import json
-import os
-import random
-import statistics
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from toss_trading.domain import ZERO, Bar, Quote, State
 from toss_trading.engine import TradingEngine
-from toss_trading.marketdata import NY, offline_session
-from toss_trading.strategy import RandomEntryBaseline, Strategy, VwapCrossBaseline
-from toss_trading.trading_config import TradingConfig, load_config
+from toss_trading.marketdata import NY, offline_session, previous_session
+from toss_trading.strategy import Strategy
+from toss_trading.trading_config import TradingConfig
 
 MIN_TRADES = 100  # Below this, report statistics carry an explicit small-sample warning.
-SENSITIVITY_FACTORS = (Decimal("0.75"), Decimal("0.875"), Decimal("1.125"), Decimal("1.25"))
 
 
 def read_csv(path: str | Path, config: TradingConfig) -> list[Bar]:
@@ -27,7 +20,7 @@ def read_csv(path: str | Path, config: TradingConfig) -> list[Bar]:
         bars = [Bar.model_validate(row) for row in csv.DictReader(handle)]
     seen = set()
     for bar in bars:
-        if bar.symbol not in config.symbols:
+        if bar.symbol not in config.market_symbols:
             raise ValueError(f"CSV contains unselected symbol: {bar.symbol}")
         key = (bar.symbol, bar.end)
         if key in seen:
@@ -160,37 +153,32 @@ def performance(
     return result
 
 
-def buy_and_hold(bars: list[Bar], c: TradingConfig) -> dict:
-    allocation = c.initial_cash / len(c.symbols)
-    total = ZERO
-    results = {}
-    for symbol in c.symbols:
-        rows = [b for b in bars if b.symbol == symbol]
-        if not rows:
-            results[symbol] = None
-            continue
-        buy = rows[0].open * (1 + c.slippage_bps / 10000) * (1 + c.entry_cost_bps / 10000)
-        sell = rows[-1].close * (1 - c.slippage_bps / 10000) * (1 - c.exit_cost_bps / 10000)
-        from toss_trading.risk import floor_step
-
-        quantity = floor_step(allocation / buy, c.quantity_step)
-        pnl = quantity * (sell - buy)
-        results[symbol] = {"return": pnl / allocation, "net_pnl": pnl}
-        total += pnl
-    return {
-        "total_return": total / c.initial_cash,
-        "net_profit_after_fees": total,
-        "by_symbol": results,
-        "allocation": "equal initial cash per selected symbol",
-    }
+QUOTE_PATHS = {
+    "adverse_first": ((0, "open"), (20, "low"), (40, "high"), (60, "close")),
+    "favorable_first": ((0, "open"), (20, "high"), (40, "low"), (60, "close")),
+}
 
 
 def simulate(
-    bars: list[Bar], config: TradingConfig, strategy: Strategy | None = None
+    bars: list[Bar],
+    config: TradingConfig,
+    strategy: Strategy | None = None,
+    *,
+    prior_bars: list[Bar] | None = None,
+    quote_path: str = "adverse_first",
 ) -> tuple[State, list[tuple[str, Decimal]], dict]:
     """Replay bars through the PAPER engine; returns final state and (day, equity) curve."""
+    if strategy is None:
+        raise ValueError(
+            "No runtime strategy is configured; use research.compare_weekly_allocations"
+        )
+    if quote_path not in QUOTE_PATHS:
+        raise ValueError(f"Unknown quote path: {quote_path}")
     if config.mode != "PAPER":
         raise ValueError("Backtest requires PAPER")
+    missing = set(config.market_symbols) - {b.symbol for b in bars}
+    if config.underlying_signals and missing:
+        raise ValueError(f"Missing execution/underlying candles: {sorted(missing)}")
     grouped = defaultdict(list)
     for bar in bars:
         session = offline_session(bar.end.astimezone(NY).date())
@@ -203,17 +191,28 @@ def simulate(
     stats = {"decisions": 0, "submitted_orders": 0, "minute_coverage": defaultdict(int)}
     store = MemoryStore(config)
     engine = TradingEngine(config, store, strategy)
+    if prior_bars:
+        first = min(grouped).astimezone(NY).date()
+        prior = previous_session(first)
+        if prior is None or any(not prior.open < b.end <= prior.close for b in prior_bars):
+            raise ValueError("Warmup must only contain the previous completed regular session")
+        engine.seed_prior(prior, prior_bars, prior.close)
     for end, rows in sorted(grouped.items()):
         session = offline_session(end.astimezone(NY).date())
         # Synthetic intraminute quote path is a model, not observed tick history.
-        # Low before high provides a deterministic adverse-first long-position path.
-        for seconds, field in ((0, "open"), (20, "low"), (40, "high"), (60, "close")):
+        # Inverse ETFs traverse the mirrored extreme so that underlying stops cannot
+        # observe a low while an inverse ETF also sees a low.
+        for seconds, field in QUOTE_PATHS[quote_path]:
             now = end - timedelta(minutes=1) + timedelta(seconds=seconds, microseconds=1)
             if seconds == 60:
                 now = end
             quotes = []
             for bar in rows:
-                price = getattr(bar, field)
+                _, direction, _ = config.signal_source(bar.symbol)
+                quote_field = field
+                if direction == -1 and field in {"low", "high"}:
+                    quote_field = "high" if field == "low" else "low"
+                price = getattr(bar, quote_field)
                 half_spread = Decimal("0.5") / 10000  # documented synthetic 1 bp spread
                 quotes.append(
                     Quote(
@@ -237,22 +236,37 @@ def simulate(
     return store.state, curve, stats
 
 
-def replay(bars: list[Bar], config: TradingConfig, strategy: Strategy | None = None) -> dict:
-    state, curve, stats = simulate(bars, config, strategy)
+def replay(
+    bars: list[Bar],
+    config: TradingConfig,
+    strategy: Strategy | None = None,
+    *,
+    prior_bars: list[Bar] | None = None,
+) -> dict:
+    state, curve, stats = simulate(bars, config, strategy, prior_bars=prior_bars)
     values = [config.initial_cash] + [value for _, value in curve]
     result = performance(state, values, config.initial_cash, config.symbols, config)
     result.update(
         {
-            "buy_and_hold": buy_and_hold(bars, config),
             **stats,
             "trade_log": state.trades,
             "config": config.model_dump(mode="json"),
             "assumptions": [
                 "1-minute end timestamps",
+                "prior completed session supplied for indicator-only warmup"
+                if prior_bars
+                else "no supplied initial indicator warmup",
                 "minute typical-price VWAP",
                 "synthetic 1bp spread",
-                "open-low-high-close quote path",
+                "adverse_first synthetic quote path: underlying low before high, "
+                "inverse extremes mirrored",
                 "next event fills; price-capped buys; partial liquidity fills",
+                "mapped signals: underlying OHLCV only; inverse direction mirrored"
+                if config.underlying_signals
+                else "legacy: traded ETF signals",
+                "underlying quote stop/target; 3x underlying ATR percentage for sizing"
+                if config.underlying_signals
+                else "legacy: traded ETF ATR stop/target",
                 "no corporate action/currency/tax correction beyond input data",
             ],
         }
@@ -280,264 +294,10 @@ def headline(result: dict) -> dict:
     return {key: result[key] for key in HEADLINE}
 
 
-_WORKER_BARS: list[Bar] = []
-
-
-def _init_worker(bars: list[Bar]) -> None:
-    global _WORKER_BARS
-    _WORKER_BARS = bars
-
-
-def _run(job: tuple) -> dict:
-    kind, config, schedule = job
-    if kind == "vwap_only":
-        strategy = VwapCrossBaseline(config)
-    elif kind == "random":
-        strategy = RandomEntryBaseline(config, schedule)
-    else:
-        strategy = None
-    return headline(replay(_WORKER_BARS, config, strategy))
-
-
-def run_jobs(bars: list[Bar], jobs: list[tuple], workers: int) -> list[dict]:
-    if workers <= 1:
-        _init_worker(bars)
-        return [_run(job) for job in jobs]
-    with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(bars,)) as pool:
-        return list(pool.map(_run, jobs))
-
-
-def entry_offsets(trade_log: list[dict]) -> list[int]:
-    """Minutes after the open of each entry's decision bar (fills follow the bar close)."""
-    offsets = []
-    for opened in sorted({trade["opened"] for trade in trade_log}):
-        at = datetime.fromisoformat(opened)
-        session = offline_session(at.astimezone(NY).date())
-        offsets.append(int((at - session.open).total_seconds() // 300) * 5)
-    return offsets
-
-
-def draw_schedule(
-    offsets: list[int], days: list[str], symbols: tuple[str, ...], seed: int
-) -> set[tuple[str, str, int]]:
-    """Same count and time-of-day distribution as the strategy's entries; random day/symbol."""
-    rng = random.Random(seed)
-    lengths = {}
-    for day in days:
-        session = offline_session(date.fromisoformat(day))
-        lengths[day] = (session.close - session.open).total_seconds() // 60
-    schedule: set[tuple[str, str, int]] = set()
-    for offset in offsets:
-        eligible = [d for d in days if lengths[d] > offset]  # Early closes are shorter.
-        for _ in range(100):  # Redraw collisions so the count matches where possible.
-            key = (rng.choice(eligible), rng.choice(symbols), offset)
-            if key not in schedule:
-                schedule.add(key)
-                break
-    return schedule
-
-
-def percentile(value: Decimal, sample: list[Decimal]) -> Decimal:
-    below = sum(x < value for x in sample) + Decimal(sum(x == value for x in sample)) / 2
-    return Decimal(below) / len(sample) * 100
-
-
-def distribution(values: list[Decimal]) -> dict:
-    floats = sorted(float(v) for v in values)
-    return {
-        "min": floats[0],
-        "median": statistics.median(floats),
-        "max": floats[-1],
-        "mean": statistics.fmean(floats),
-        "stdev": statistics.stdev(floats) if len(floats) > 1 else 0.0,
-    }
-
-
-def baselines(bars: list[Bar], config: TradingConfig, seeds: int, workers: int) -> dict:
-    current = replay(bars, config)
-    days = sorted({key.split(":")[0] for key in current["minute_coverage"]})
-    offsets = entry_offsets(current["trade_log"])
-    jobs = [("vwap_only", config, None)] + [
-        ("random", config, draw_schedule(offsets, days, config.symbols, seed))
-        for seed in range(seeds)
-    ]
-    results = run_jobs(bars, jobs, workers)
-    randoms = results[1:]
-    report = {
-        "current": headline(current),
-        "vwap_only": results[0],
-        "buy_and_hold": current["buy_and_hold"]["total_return"],
-        "random_entry": {"seeds": seeds, "target_entries": len(offsets), "runs": randoms},
-    }
-    if randoms:
-        returns = [r["total_return"] for r in randoms]
-        factors = [r["profit_factor"] for r in randoms if r["profit_factor"] is not None]
-        report["random_entry"]["total_return"] = distribution(returns)
-        report["current_percentile_vs_random"] = {
-            "total_return": percentile(current["total_return"], returns),
-            "profit_factor": percentile(current["profit_factor"], factors)
-            if factors and current["profit_factor"] is not None
-            else None,
-        }
-    report["note"] = (
-        "random_entry keeps the strategy's exits, risk limits and costs and only randomizes "
-        "the entry day/symbol at the same times of day. A percentile near 50 means the entry "
-        "signal is indistinguishable from chance on this data."
+def main():
+    raise SystemExit(
+        "Minute strategy CLI was removed. Use python -m research.compare_weekly_allocations."
     )
-    if current["total_trades"] < MIN_TRADES:
-        report["sample_warning"] = current["sample_warning"]
-    return report
-
-
-def neighbors(config: TradingConfig) -> list[tuple[str, object]]:
-    """One-at-a-time grid around the current values of parameters that affect decisions."""
-    names = ["stretch_atr", "stop_atr", "reward_r", "atr_period"]
-    names += [n for n in ("rsi_entry_max", "min_volume_ratio") if getattr(config, n) is not None]
-    result = []
-    for name in names:
-        base = getattr(config, name)
-        for factor in SENSITIVITY_FACTORS:
-            value = Decimal(base) * factor
-            result.append((name, max(2, round(value)) if isinstance(base, int) else value))
-    return result
-
-
-def sensitivity(bars: list[Bar], config: TradingConfig, workers: int) -> dict:
-    grid = neighbors(config)
-    configs = [config] + [
-        TradingConfig.model_validate({**config.model_dump(), name: value}) for name, value in grid
-    ]
-    results = run_jobs(bars, [("current", c, None) for c in configs], workers)
-    base, rows = results[0], []
-    for (name, value), metrics in zip(grid, results[1:], strict=True):
-        rows.append({"parameter": name, "value": value, **metrics})
-    summary = {}
-    for name in dict.fromkeys(n for n, _ in grid):
-        group = [r for r in rows if r["parameter"] == name]
-        factors = [r["profit_factor"] for r in group if r["profit_factor"] is not None]
-        summary[name] = {
-            "base_value": getattr(config, name),
-            "total_return": distribution([r["total_return"] for r in group]),
-            "profit_factor": distribution(factors) if factors else None,
-            "neighbors_with_pf_above_1": sum(f > 1 for f in factors),
-            "neighbors": len(group),
-        }
-    return {
-        "base": base,
-        "grid": rows,
-        "summary": summary,
-        "note": "Stability check only: compare the spread of neighbors with the base. "
-        "No combination is recommended; picking the best cell here would overfit.",
-    }
-
-
-def walk_forward(bars: list[Bar], config: TradingConfig, train: int, test: int) -> dict:
-    """Fixed parameters; the train span only provides history before each test window."""
-    state, curve, _ = simulate(bars, config)
-    days = sorted({day for day, _ in curve})
-    end_equity = {}
-    for day, value in curve:
-        end_equity[day] = value
-    trips = round_trips(state)
-    windows = []
-    for start in range(train, len(days), test):
-        span = days[start : start + test]
-        opening = end_equity[days[start - 1]]
-        peak, mdd = opening, ZERO
-        for day, value in curve:
-            if day in span:
-                peak = max(peak, value)
-                mdd = max(mdd, (peak - value) / peak)
-        closed = [
-            t
-            for t in trips
-            if datetime.fromisoformat(t["closed"]).astimezone(NY).date().isoformat() in span
-        ]
-        stats = summarize(closed)
-        windows.append(
-            {
-                "first_day": span[0],
-                "last_day": span[-1],
-                "return": end_equity[span[-1]] / opening - 1,
-                "trades": stats["trades"],
-                "win_rate": stats["win_rate"],
-                "profit_factor": stats["profit_factor"],
-                "mdd": mdd,
-            }
-        )
-    returns = [w["return"] for w in windows]
-    return {
-        "train_days": train,
-        "test_days": test,
-        "parameter_search": False,
-        "windows": windows,
-        "summary": {
-            "windows": len(windows),
-            "positive_windows": sum(r > 0 for r in returns),
-            "return": distribution(returns) if returns else None,
-            "trades": sum(w["trades"] for w in windows),
-        },
-    }
-
-
-def table(rows: list[dict], columns: tuple[str, ...]) -> str:
-    def cell(value):
-        if value is None:
-            return "-"
-        if isinstance(value, Decimal | float):
-            return f"{float(value):.4f}"
-        return str(value)
-
-    lines = [" | ".join(columns)]
-    lines += [" | ".join(cell(row.get(c)) for c in columns) for row in rows]
-    return "\n".join(lines)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("csv")
-    parser.add_argument("--config", default="config/strategy.toml")
-    parser.add_argument("--split", type=date.fromisoformat)
-    parser.add_argument("--baselines", action="store_true")
-    parser.add_argument("--seeds", type=int, default=20)
-    parser.add_argument("--sensitivity", action="store_true")
-    parser.add_argument("--walk-forward", metavar="TRAIN,TEST")
-    parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
-    parser.add_argument("--output", default="data/backtest.json")
-    args = parser.parse_args()
-    if not (args.split or args.baselines or args.sensitivity or args.walk_forward):
-        parser.error("choose --split, --baselines, --sensitivity and/or --walk-forward")
-    config = load_config(args.config)
-    bars = read_csv(args.csv, config)
-    report = split_backtest(bars, config, args.split) if args.split else {}
-    if args.baselines:
-        report["baselines"] = result = baselines(bars, config, args.seeds, args.workers)
-        rows = [
-            {"run": "current", **result["current"]},
-            {"run": "vwap_only", **result["vwap_only"]},
-        ]
-        if args.seeds:
-            spread = result["random_entry"]["total_return"]
-            rows.append({"run": "random median", "total_return": spread["median"]})
-        print(table(rows, ("run", *HEADLINE)))
-        print("buy_and_hold total_return", result["buy_and_hold"])
-        print("current percentile vs random:", result.get("current_percentile_vs_random"))
-    if args.sensitivity:
-        report["sensitivity"] = result = sensitivity(bars, config, args.workers)
-        print(table(result["grid"], ("parameter", "value", *HEADLINE)))
-    if args.walk_forward:
-        train, test = (int(x) for x in args.walk_forward.split(","))
-        report["walk_forward"] = result = walk_forward(bars, config, train, test)
-        print(
-            table(
-                result["windows"],
-                ("first_day", "last_day", "return", "trades", "win_rate", "profit_factor", "mdd"),
-            )
-        )
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, default=str, ensure_ascii=False))
-    print(f"Backtest report: {output}")
 
 
 if __name__ == "__main__":

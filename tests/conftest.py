@@ -8,7 +8,7 @@ from toss_trading.domain import Session
 from toss_trading.persistence import Store
 from toss_trading.trading_config import TradingConfig, load_config
 
-LEGACY_CONFIG = Path(__file__).parents[1] / "config" / "strategy-legacy.toml"
+LEGACY_CONFIG = Path(__file__).parents[1] / "config" / "strategy.toml"
 
 
 @pytest.fixture(autouse=True)

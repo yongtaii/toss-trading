@@ -11,3 +11,6 @@ dist/
 *.key
 secrets/
 data/
+
+# Account-specific live limits are local deployment configuration.
+config/live.toml

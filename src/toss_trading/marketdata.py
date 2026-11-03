@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from zoneinfo import ZoneInfo
@@ -14,7 +14,9 @@ NY = ZoneInfo("America/New_York")
 @lru_cache(maxsize=16)
 def offline_session(day: date) -> Session | None:
     # Historical calendar only. Online decisions require the broker's current calendar.
-    cal = exchange_calendars.get_calendar("XNYS", start=str(day.year - 1), end=str(day.year + 1))
+    cal = exchange_calendars.get_calendar(
+        "XNYS", start=f"{day.year - 1}-01-01", end=f"{day.year + 1}-12-31"
+    )
     if not cal.is_session(day.isoformat()):
         return None
     return Session(
@@ -75,8 +77,53 @@ def parse_candle(symbol: str, payload: dict) -> Bar:
     )
 
 
+async def fetch_interval(
+    broker: TossQueries,
+    symbol: str,
+    start: date,
+    end: date,
+    interval: str,
+    *,
+    max_pages: int = 60,
+    adjusted: bool = True,
+) -> list[Bar]:
+    """Page one documented interval backwards over a date range.
+
+    `interval` is forwarded to the official API unchanged; this project does not
+    guess the token. Gaps are preserved rather than filled, and a cursor that
+    fails to advance raises instead of looping.
+    """
+    if start > end:
+        raise ValueError("start must precede end")
+    before = datetime.combine(end + timedelta(days=1), time(), tzinfo=UTC).isoformat()
+    result: dict[datetime, Bar] = {}
+    seen: set[str] = set()
+    for _ in range(max_pages):
+        if before in seen:
+            raise ValueError("Candle pagination did not advance")
+        seen.add(before)
+        options = {} if adjusted else {"adjusted": False}
+        page = await broker.candles(symbol, before=before, interval=interval, **options)
+        items = [parse_candle(symbol, b) for b in page["candles"]]
+        if not items:
+            break
+        for bar in items:
+            if start <= bar.end.astimezone(NY).date() <= end:
+                if bar.end in result and result[bar.end] != bar:
+                    raise ValueError("Conflicting candle revision")
+                result[bar.end] = bar
+        oldest = min(b.end for b in items)
+        cursor = page.get("nextBefore")
+        if cursor is None or oldest.astimezone(NY).date() < start:
+            break
+        before = cursor
+    else:
+        raise ValueError("Candle pagination exceeded its page budget")
+    return [result[k] for k in sorted(result)]
+
+
 async def fetch_minutes(
-    broker: TossQueries, symbol: str, session: Session, through: datetime
+    broker: TossQueries, symbol: str, session: Session, through: datetime, *, adjusted: bool = True
 ) -> list[Bar]:
     """Walk the documented inclusive cursor; preserve gaps instead of fabricating bars."""
     before = min(through, session.close).isoformat()
@@ -86,7 +133,8 @@ async def fetch_minutes(
         if before in seen:
             raise ValueError("Candle pagination did not advance")
         seen.add(before)
-        page = await broker.candles(symbol, before=before)
+        options = {} if adjusted else {"adjusted": False}
+        page = await broker.candles(symbol, before=before, **options)
         items = [parse_candle(symbol, b) for b in page["candles"]]
         for bar in items:
             if session.open < bar.end <= min(through, session.close):

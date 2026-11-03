@@ -1,5 +1,7 @@
 import asyncio
 import re
+import socket
+import ssl
 from datetime import date
 from time import monotonic
 from typing import Any, Literal
@@ -7,10 +9,14 @@ from typing import Any, Literal
 import httpx
 
 from toss_trading.config import Settings
+from toss_trading.tls import ssl_context
 
 BASE_URL = "https://openapi.tossinvest.com"
 SYMBOL = re.compile(r"[A-Za-z0-9.\-]{1,32}")
 ORDER_ID = re.compile(r"[A-Za-z0-9_\-]{1,256}")
+# Candle interval tokens are defined by the official API; only the shape is
+# validated so a documented value can be supplied without guessing it here.
+INTERVAL = re.compile(r"[0-9A-Za-z]{1,8}")
 READ_PATHS = frozenset(
     {
         "/api/v1/prices",
@@ -20,6 +26,7 @@ READ_PATHS = frozenset(
         "/api/v1/orders",
         "/api/v1/candles",
         "/api/v1/orderbook",
+        "/api/v1/commissions",
         "/api/v1/market-calendar/US",
     }
 )
@@ -28,9 +35,31 @@ READ_PATHS = frozenset(
 class BrokerError(Exception):
     """Sanitized error: never include broker bodies, headers, or credentials."""
 
-    def __init__(self, status: int | None = None):
+    def __init__(self, status: int | None = None, *, reason: str | None = None):
         self.status = status
-        super().__init__(f"Broker request failed (status={status})")
+        self.reason = reason
+        detail = f", reason={reason}" if reason else ""
+        super().__init__(f"Broker request failed (status={status}{detail})")
+
+
+def request_error_reason(error: httpx.RequestError) -> str:
+    """Classify typed causes without exposing messages, URLs, headers or keys."""
+    cause: BaseException | None = error
+    seen = set()
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            return "tls_verification"
+        if isinstance(cause, socket.gaierror):
+            return "dns"
+        cause = cause.__cause__ or cause.__context__
+    if isinstance(error, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(error, httpx.ProxyError):
+        return "proxy"
+    if isinstance(error, httpx.ConnectError):
+        return "connection"
+    return "transport"
 
 
 class ConfigurationError(Exception):
@@ -74,6 +103,7 @@ class TossQueries:
             timeout=10,
             follow_redirects=False,
             trust_env=False,
+            verify=ssl_context(),
             transport=transport,
             event_hooks={"request": [_guard]},
         )
@@ -93,8 +123,8 @@ class TossQueries:
             self._last_request = monotonic()
             try:
                 response = await self._http.request(method, path, **kwargs)
-            except httpx.RequestError:
-                raise BrokerError() from None
+            except httpx.RequestError as exc:
+                raise BrokerError(reason=request_error_reason(exc)) from None
         if not response.is_success:
             raise BrokerError(response.status_code)
         return response
@@ -155,16 +185,31 @@ class TossQueries:
     async def accounts(self) -> Any:
         return await self._get("/api/v1/accounts")
 
-    async def candles(self, symbol: str, *, count: int = 200, before: str | None = None) -> Any:
+    async def candles(
+        self,
+        symbol: str,
+        *,
+        count: int = 200,
+        before: str | None = None,
+        interval: str = "1m",
+        adjusted: bool = True,
+    ) -> Any:
+        """Read candles. `interval` must be a value from the official documentation.
+
+        The token is forwarded unchanged rather than guessed: only its shape is
+        checked here, and an unsupported value surfaces as a broker error.
+        """
         if not 1 <= count <= 200:
             raise ValueError("Candle count must be 1 to 200")
+        if not INTERVAL.fullmatch(interval):
+            raise ValueError("Invalid candle interval")
         return await self._get(
             "/api/v1/candles",
             symbol=symbol_value(symbol),
-            interval="1m",
+            interval=interval,
             count=count,
             before=before,
-            adjusted="true",
+            adjusted="true" if adjusted else "false",
         )
 
     async def orderbook(self, symbol: str) -> Any:
@@ -182,6 +227,9 @@ class TossQueries:
 
     async def buying_power(self) -> Any:
         return await self._get("/api/v1/buying-power", account=True, currency="USD")
+
+    async def commissions(self) -> Any:
+        return await self._get("/api/v1/commissions", account=True)
 
     async def orders(
         self,

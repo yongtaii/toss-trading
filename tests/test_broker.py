@@ -1,4 +1,6 @@
 import asyncio
+import socket
+import ssl
 from datetime import date
 from urllib.parse import parse_qs
 
@@ -225,7 +227,32 @@ async def test_timeout(settings, monkeypatch):
 
     broker = make_broker(settings, timeout, monkeypatch)
     try:
-        with pytest.raises(BrokerError, match="status=None"):
+        with pytest.raises(BrokerError, match="status=None") as error:
             await broker.accounts()
+        assert error.value.reason == "timeout"
+        assert "sensitive-url" not in str(error.value)
+    finally:
+        await broker.aclose()
+
+
+@pytest.mark.parametrize(
+    "cause,reason",
+    [
+        (ssl.SSLCertVerificationError(1, "private-certificate-details"), "tls_verification"),
+        (socket.gaierror(-2, "private-hostname"), "dns"),
+    ],
+)
+async def test_connection_error_categories_never_expose_cause_messages(
+    settings, monkeypatch, cause, reason
+):
+    def handler(req):
+        raise httpx.ConnectError("private-request-details", request=req) from cause
+
+    broker = make_broker(settings, handler, monkeypatch)
+    try:
+        with pytest.raises(BrokerError) as error:
+            await broker.accounts()
+        assert error.value.reason == reason
+        assert "private-" not in str(error.value)
     finally:
         await broker.aclose()

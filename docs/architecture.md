@@ -1,80 +1,29 @@
 # 현재 아키텍처
 
-기존 OAuth 및 조회 API를 재사용하고, 증권사 조회와 독립적인 전략·리스크·PAPER 엔진을 추가했습니다.
-아래 트리의 각 파일이 구현되어 있습니다.
+전략은 주간 SMA20/200 기반 다섯 가지 오프라인 연구 정책만 남겼다.
 
-```text
-config/strategy.toml          # 사용자 종목·전략·리스크 파라미터
-src/toss_trading/
-├── config.py                # 환경변수·Secrets; 실거래 활성화 거부
-├── trading_config.py        # TOML 스키마·안전 한도
-├── domain.py                # Decimal, 완료 분봉, 호가, 세션, 포지션, 주문 상태
-├── strategy.py              # 순수 지표 계산·신호·명시적 전략 registry/Protocol
-├── risk.py                  # 진입 검증·ATR 수량·노출/현금 예약 고려
-├── execution.py             # Execution 계약·PaperExecution·차단된 LIVE 경계
-├── engine.py                # 이벤트 처리·청산 우선순위·신호 중복 방지
-├── persistence.py           # SQLite/PostgreSQL 원장·판단 이벤트·Slack outbox
-├── marketdata.py            # 공식 캘린더/호가/분봉 해석·역사 거래일 캘린더
-├── runner.py                # 공식 REST 기반 PAPER poll 실행
-├── reconciliation.py        # 실제 계좌와 기대 상태를 읽기 전용으로 대조
-├── download.py              # 지정 종목의 공식 과거 1분봉 CSV 다운로드
-├── backtest.py              # 동일 엔진 재생·학습/검증 분리·성과·Buy & Hold
-├── notifications.py         # 명시적으로 켠 Slack outbox dispatcher
-├── api.py                   # 기존 조회 API + 모의 상태/이벤트 조회
-├── ports.py                 # 기존 BrokerQueries 계약
-├── smoke.py                 # 기존 실제 조회 연결 점검
-├── monitoring.py            # worker heartbeat·수집 결과·조회용 시장 일정
-├── dashboard.py             # 별도 로그인·원장 기반 대시보드 API
-├── static/                  # 빌드 없는 HTML/CSS/JS 대시보드
-└── adapters/toss.py          # 기존 OAuth·조회 + 공식 분봉/호가/캘린더 GET
-examples/generate_synthetic.py
-```
+| 위치 | 역할 |
+| --- | --- |
+| `research/picks/` | 기본 전략·90·95·99·100% 다섯 명세 |
+| `research/weekly_baseline.py` | 기본 전략의 신호·회계·주간 일정 |
+| `research/compare_weekly_allocations.py` | 고비중 회계와 50회 비교 실행 |
+| `research/daily_data.py` | 원본 일봉·메타데이터·거래일·자료 병합 검사 |
+| `research/weekly_baseline_audit.py` | 기존형의 별도 원장 검산 |
+| `research/audit_weekly_allocations.py` | 고비중형 검산·전체 평가 검사 |
+| `research/results/weekly-comparison.json` | Git에 보존하는 비교 지표 |
 
-```mermaid
-flowchart LR
-    C[TOML 사용자 설정] --> E[TradingEngine]
-    T[TossQueries: 조회 전용] --> M[시장 캘린더 / 완료 1분봉 / 호가]
-    M --> E
-    CSV[역사 1분봉 CSV] --> B[Backtest replay]
-    B --> E
-    E --> S[전략 Protocol / registry]
-    S --> R[Risk Gate]
-    R --> P[PaperExecution]
-    R --> L[LIVE: 활성화 차단]
-    P --> DB[(원장 + 이벤트 + outbox)]
-    DB --> API[FastAPI 운영 조회]
-    DB --> N[옵션 Slack 발송]
-```
+연구 코드는 HTTP나 증권사 주문을 호출하지 않는다. 완료된 과거 일봉에서 신호를 계산하고,
+다음 시가 체결·비용·정수 수량·현금·일별 평가액을 계산한다. 고비중형은 추가 매수 때
+평균 취득가를 갱신하고 부분 매도 때 원가를 비례 배분한다. 원본 자료와 전체 원장은
+Git에서 제외한 `data/`에 저장한다.
 
-PAPER는 실제 계좌와 별개인 모의 현금/포지션/주문만 사용합니다. 전략은 키·HTTP·LLM에
-접근하지 않습니다. 설정 목록 밖의 신호는 엔진과 실행 어댑터 모두에서 거부합니다.
-향후 전략 추가는 Strategy Protocol을 구현하고 명시적 registry에 등록하는 방식입니다.
-외부 패키지나 추천 종목을 자동 발견·설치하지 않습니다.
+기존 `src/toss_trading/`의 API·조회 어댑터·시세 다운로드·캘린더·리스크·체결·원장·
+계좌 대조·모니터링 기반 코드는 유지했다. `strategy.py`에는 공통 계약과 매매하지 않는
+`research_only` 자리표시자만 있다. 삭제된 전략 이름은 팩토리에서 거부한다.
+`backtest.py`에는 외부 주입 전략을 위한 공통 분봉 재생 도구가 남아 있으나 이전
+전략 CLI·기준 전략·탐색 기능은 제거했다. 남긴 주간 전략의 실행 경로는 `research/`다.
 
-원장은 SQLAlchemy를 통해 JSON aggregate로 저장합니다. 한 step의 상태·판단 기록·알림을
-같은 트랜잭션에 기록하고 revision 조건 갱신으로 동시 worker의 이중 반영을 막습니다.
-주문 식별자는 거래일·종목·신호 봉에서 결정되어 재시작 이후에도 유지됩니다.
-DB 트랜잭션 외부로 실주문을 보내지 않기 때문에 PAPER에서는 commit 실패가 실계좌에 영향을 주지 않습니다.
-
-모의 체결은 이후의 timestamp를 가진 신선한 호가에서만 발생합니다. 같은 호가를 반복해서
-부분 체결시키지 않습니다. 체결 대기 상태와 UNKNOWN은 같은 종목의 다음 주문을 막습니다.
-손절/종료 청산 시 미체결 매수 잔량을 확정 취소한 후 현재 보유 수량만 청산합니다.
-LIVE의 취소 확인·타임아웃·분산 상태 조정은 PAPER 동작을 그대로 가정해서 활성화하지 않습니다.
-
-## 다음 운영 단계
-
-1. 발급된 키와 허용 IP에서 조회·캔들 timestamp·호가 신선도·누락·retention을 확인합니다.
-2. 실제 과거 데이터로 독립 학습/검증을 수행하고 PAPER를 정규장 동안 운용합니다.
-3. PostgreSQL 운영 마이그레이션·백업/복원, WebSocket 수집, 공유 토큰과 호출 한도 관리를 검증합니다.
-4. LIVE 어댑터의 브로커 orderId 매핑·멱등성·잔고/체결 재조정·보호 주문·정규장 종료 취소를 별도 구현/검증합니다.
-5. 검증 증거와 독립 활성화 조건을 갖춘 뒤 LIVE 전환을 설계합니다. 현재는 설정만으로 활성화할 수 없습니다.
-6. 구현된 `/dashboard/`와 `compose.aws.yaml`로 Lightsail HTTPS 배포를 수행합니다.
-   이후 커밋 SHA 기반 CD를 추가합니다. 대시보드는 별도 프론트 빌드 없이 FastAPI에서 제공합니다.
-
-운영 DB를 변경할 때 aggregate schema version, 데이터 마이그레이션과 롤백을 함께 설계해야 합니다.
-현재 metadata.create_all은 초기 스키마 생성만 담당하며 기존 DB 변경을 자동 수행하지 않습니다.
-
-모니터링은 단일 행 `paper_worker_status`와 종목별 `paper_symbol_signals`에 저장합니다.
-heartbeat는 거래 원장 revision과 이벤트/outbox를 늘리지 않습니다. 최신 전략 판단과 진입 실행 결과는
-원장 commit과 같은 트랜잭션에서 반영합니다. worker 초기화 시 누락된 모니터링 테이블만 생성하며,
-조회 API는 테이블이 없는 이전 DB도 읽고 누락된 상태를 미확인으로 표시합니다.
+`config/strategy.toml`은 기존 API·원장 스키마를 위한 비매매 설정이다.
+PAPER runner는 이 설정을 발견하면 브로커 연결 전에 중단한다. `LiveConfig.strategy()`도
+주간 전략 연결이 구현되지 않았다는 오류로 중단한다. 주간 전략을 실행기에 연결하는
+개발은 별도 작업이며, 과거 전략을 대신 실행하도록 우회하지 않는다.

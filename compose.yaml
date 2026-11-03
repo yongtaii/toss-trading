@@ -26,26 +26,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-  paper:
-    profiles: ["paper"]
-    build: .
-    command: [".venv/bin/python", "-m", "toss_trading.runner"]
-    environment:
-      TOSS_CLIENT_ID: ${TOSS_CLIENT_ID:-}
-      TOSS_CLIENT_SECRET: ${TOSS_CLIENT_SECRET:-}
-      LIVE_TRADING_ENABLED: "false"
-      STRATEGY_CONFIG_PATH: ${STRATEGY_CONFIG_PATH:-config/strategy.toml}
-      PAPER_DATABASE_URL: ${PAPER_DATABASE_URL:-sqlite:///data/paper.db}
-      COMPARE_CONFIG_PATH: ${COMPARE_CONFIG_PATH:-}
-      COMPARE_DATABASE_URL: ${COMPARE_DATABASE_URL:-}
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-    volumes:
-      - paper_data:/app/data
-      - ./config:/app/config:ro
-    restart: unless-stopped
-    read_only: true
-    tmpfs: [/tmp]
-    security_opt: ["no-new-privileges:true"]
   postgres:
     image: postgres:17-alpine
     profiles: ["storage"]

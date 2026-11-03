@@ -6,7 +6,6 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import select
 
-from toss_trading.backtest import performance, read_csv, replay, split_backtest
 from toss_trading.domain import Bar, Order, OrderStatus, Position, Quote, State
 from toss_trading.engine import TradingEngine
 from toss_trading.execution import LiveTossExecution, PaperExecution
@@ -14,7 +13,6 @@ from toss_trading.marketdata import broker_session, offline_session, parse_candl
 from toss_trading.notifications import dispatch
 from toss_trading.persistence import ConcurrentUpdate, Store, events, outbox
 from toss_trading.risk import quote_checks, size_entry
-from toss_trading.strategy import VwapMeanRevert, aggregate, create_strategy, ema
 from toss_trading.trading_config import TradingConfig
 
 
@@ -103,65 +101,6 @@ def test_default_user_symbols_and_configuration(config):
             TradingConfig(**change)
     with pytest.raises(RuntimeError, match="LIVE is blocked"):
         LiveTossExecution()
-
-
-def test_indicators_and_buy_signal(config, session):
-    rows = minutes(session)
-    assert isinstance(create_strategy("vwap_mean_revert", config), VwapMeanRevert)
-    decision = VwapMeanRevert(config).evaluate(rows, session)
-    assert decision.signal == "BUY_SIGNAL"
-    assert all(decision.checks.values())
-    ind = decision.indicators
-    assert ind.volume_ratio == 10  # Current volume excluded from prior 20-bar denominator.
-    assert ind.close < ind.ema_fast < ind.ema_slow
-    assert ind.close < ind.vwap - config.stretch_atr * ind.atr
-    assert ind.atr > 0
-    assert len(aggregate(rows)) == 22
-    assert ema([D(1), D(2), D(3), D(4)], 3) == 3
-    expected = sum((b.high + b.low + b.close) / 3 * b.volume for b in rows)
-    expected /= sum(b.volume for b in rows)
-    assert ind.vwap == expected
-
-
-@pytest.mark.parametrize("kind", ["shallow", "gap", "warmup", "incomplete", "zero"])
-def test_technical_conditions_reject(config, session, kind):
-    rows = minutes(session)
-    if kind == "shallow":
-        ind = VwapMeanRevert(config).evaluate(rows, session).indicators
-        config = config.model_copy(update={"stretch_atr": (ind.vwap - ind.close) / ind.atr + 1})
-    elif kind == "gap":
-        rows.pop(40)
-    elif kind == "warmup":
-        rows = rows[:15]
-    elif kind == "incomplete":
-        rows = rows[:-1]
-    else:
-        rows = [b.model_copy(update={"volume": D(0)}) for b in rows]
-    assert VwapMeanRevert(config).evaluate(rows, session).signal != "BUY_SIGNAL"
-
-
-def test_vwap_exit_and_session_vwap_reset(config, session):
-    decision = VwapMeanRevert(config).evaluate(minutes(session, rising=True), session)
-    assert decision.signal == "VWAP_EXIT"
-    assert decision.indicators.close >= decision.indicators.vwap
-    assert not decision.checks["stretched_below_vwap"]
-    next_day = session.model_copy(
-        update={
-            "open": session.open + timedelta(days=1),
-            "close": session.close + timedelta(days=1),
-        }
-    )
-    assert VwapMeanRevert(config).evaluate(minutes(session), next_day).indicators is None
-
-
-@pytest.mark.parametrize("offset,allowed", [(14, False), (15, True), (360, True), (361, False)])
-def test_entry_session_boundaries(config, session, offset, allowed):
-    now = session.open + timedelta(minutes=offset)
-    quantity, checks = size_entry(
-        account(session), "SOXL", D("0.2"), quote(now), now, session, config
-    )
-    assert checks["entry_window"] is allowed
-    assert (quantity > 0) is allowed
 
 
 @pytest.mark.parametrize(
@@ -317,28 +256,6 @@ def test_stop_partial_fills_fees_and_cooldown(config, session):
     assert sum(D(t["pnl"]) for t in state.trades) == state.realized
 
 
-def test_engine_idempotency_restart_and_future_bars(config, session, store):
-    engine = TradingEngine(config, store)
-    rows = minutes(session)
-    now = rows[-1].end
-    records = engine.step(now, session, rows, [quote(now)])
-    assert any(r["event"] == "ORDER_SUBMITTED" for r in records)
-    _, state = store.load()
-    assert len(state.orders) == 1 and not state.positions
-    engine = TradingEngine(config, store)
-    engine.step(now, session, rows, [quote(now)])
-    assert len(store.load()[1].orders) == 1
-    later = now + timedelta(seconds=1)
-    engine.step(later, session, [], [quote(later)])
-    assert store.load()[1].positions["SOXL"].quantity > 0
-    records = engine.step(
-        later, session, [rows[-1].model_copy(update={"end": now + timedelta(minutes=5)})], []
-    )
-    assert records[0]["event"] == "REJECTED_DATA"
-    with pytest.raises(ValueError, match="Out-of-order"):
-        engine.step(now, session, [], [])
-
-
 @pytest.mark.parametrize(
     "reason,price", [("STOP", "23"), ("TARGET", "28"), ("SESSION_FLATTEN", "25")]
 )
@@ -395,17 +312,6 @@ def test_flatten_alert_stale_prices_and_no_after_hours_fill(config, session, sto
     records = engine.step(session.close, session, [], [quote(session.close)])
     assert store.load()[1].positions
     assert any(r["event"] == "DAILY_SUMMARY" for r in records)
-
-
-def test_multi_symbol_slots_and_cash_reservations(config, session, store):
-    engine = TradingEngine(config, store)
-    rows = [b for symbol in config.symbols for b in minutes(session, symbol=symbol)]
-    now = max(b.end for b in rows)
-    engine.step(now, session, rows, [quote(now, s) for s in config.symbols])
-    state = store.load()[1]
-    assert len(state.pending()) == 3
-    assert sum(o.reserved for o in state.pending()) <= state.cash
-    assert not state.positions
 
 
 def test_optimistic_concurrency_rolls_back_events_and_config_change(config, store):
@@ -496,31 +402,3 @@ async def test_slack_timeout_unknown_does_not_resend(store):
     )
     with store.engine.connect() as conn:
         assert conn.execute(select(outbox.c.status)).scalar_one() == "UNKNOWN"
-
-
-def test_backtest_same_engine_no_signal_close_fill_and_metrics(config, session):
-    rows = minutes(session, count=120)
-    report = replay(rows, config)
-    assert report["submitted_orders"] >= 1
-    assert "buy_and_hold" in report
-    assert report["minute_coverage"]["2026-10-19:SOXL"] == 120
-    assert "unclosed_positions" in report
-    # Known equity curve: 10% MDD, 5% total return.
-    metrics = performance(State(cash=D(10500)), [D(10000), D(9000), D(10500)], D(10000))
-    assert metrics["mdd"] == D("0.1") and metrics["total_return"] == D("0.05")
-    assert metrics["profit_factor"] is None
-
-
-def test_train_validation_and_csv_reject_duplicates(config, session, tmp_path):
-    with pytest.raises(ValueError, match="Train and validation"):
-        split_backtest(minutes(session), config, date(2026, 10, 20))
-    path = tmp_path / "bars.csv"
-    path.write_text(
-        "symbol,end,open,high,low,close,volume\nAAPL,2026-10-19T13:31:00Z,20,21,19,20,100\n"
-    )
-    with pytest.raises(ValueError, match="unselected"):
-        read_csv(path, config)
-    row = "SOXL,2026-10-19T13:31:00Z,20,21,19,20,100\n"
-    path.write_text("symbol,end,open,high,low,close,volume\n" + row + row)
-    with pytest.raises(ValueError, match="Duplicate"):
-        read_csv(path, config)

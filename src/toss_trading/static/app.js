@@ -51,7 +51,13 @@ const checkLabels = {
   complete_contiguous_session: "정규장 분봉 연속성",
   warmup: "지표 워밍업",
   volume_available: "거래량 데이터",
-  stretched_below_vwap: "VWAP 이탈 폭",
+  stretched_below_vwap: "VWAP 하방 이탈 폭",
+  stretched_above_vwap: "VWAP 상방 이탈 폭",
+  vwap_cross_down: "VWAP 하향 돌파",
+  confirmed_reversal: "완료 봉 전환 확인",
+  recovery_covers_costs: "회복 폭 대비 비용",
+  net_reward_covers_stop: "비용 차감 후 손익비",
+  fresh_signal_quote: "기초 ETF 시세 유효",
   after_open: "개장 후 대기 시간",
   before_close: "마감 전 진입 시간",
   atr_positive: "유효한 ATR",
@@ -252,7 +258,7 @@ function renderEntryConditions(rows = []) {
     const card = el("article", "entry-card");
     const top = el("div", "entry-top");
     top.append(
-      el("span", "entry-name", row.symbol),
+      el("span", "entry-name", `${row.symbol} · ${row.signal_symbol || row.symbol} 기준`),
       el("span", `entry-status ${row.status}`, statuses[row.status]),
     );
     card.append(top);
@@ -290,7 +296,7 @@ function renderEntryConditions(rows = []) {
       ["5분봉 종가", row.indicators.close],
       ["당일 VWAP", row.indicators.vwap],
       ["ATR · 5분봉", row.indicators.atr],
-      ["진입 기준 · 종가가 이 값 미만", row.entry_below],
+      [row.signal_direction === -1 ? "진입 기준 · 종가가 이 값 초과" : "진입 기준 · 종가가 이 값 미만", row.entry_above ?? row.entry_below],
     ]) {
       const item = el("div");
       item.append(el("dt", "", label), el("dd", "", preciseMoney(value)));
@@ -304,11 +310,11 @@ function renderEntryConditions(rows = []) {
         "entry-distance",
         distance == null
           ? "진입 기준 계산 대기"
-          : Number(row.indicators.close) < Number(row.entry_below)
+          : (row.checks.stretched_below_vwap ?? row.checks.stretched_above_vwap)
             ? "마지막 5분봉 종가의 VWAP 이탈 폭 충족"
             : Number(distance) === 0
-              ? "진입 경계값 도달 · 종가가 기준보다 낮아야 충족"
-              : `마지막 5분봉 종가에서 ${preciseMoney(distance)} 초과 하락 시 가격 조건 충족`,
+              ? "진입 경계값 도달 · 추가 이탈 필요"
+              : `마지막 5분봉 종가에서 ${preciseMoney(distance)} 초과 ${row.signal_direction === -1 ? "상승" : "하락"} 시 가격 조건 충족`,
       ),
     );
     const detail = el("details", "entry-detail");
@@ -507,7 +513,9 @@ function renderPortfolio() {
           money(p.entry),
           money(p.mark),
           money(p.unrealized),
-          `${money(p.stop)} / ${money(p.target)}`,
+          p.signal_symbol
+            ? `${p.signal_symbol} ${money(p.signal_stop)} / ${money(p.signal_target)}`
+            : `${money(p.stop)} / ${money(p.target)}`,
         ]
       : [
           p.symbol,

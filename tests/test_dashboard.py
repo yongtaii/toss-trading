@@ -11,7 +11,7 @@ from toss_trading.domain import Order, Position
 from toss_trading.persistence import Store
 
 PASSWORD = "dashboard-test-password-only"
-CONFIG = Path(__file__).parents[1] / "config" / "strategy-legacy.toml"
+CONFIG = Path(__file__).parents[1] / "config" / "strategy.toml"
 
 
 def dashboard_settings(store, **kwargs):
@@ -143,9 +143,13 @@ def test_dashboard_missing_ledger_fails_without_creating_tables(tmp_path):
         assert str(tmp_path) not in response.text
 
 
-def test_dashboard_configuration_mismatch_is_sanitized(store):
+def test_dashboard_configuration_mismatch_is_sanitized(store, tmp_path):
     settings = dashboard_settings(store)
-    settings.strategy_config_path = str(CONFIG.with_name("strategy.toml"))
+    changed = tmp_path / "changed.toml"
+    changed.write_text(
+        CONFIG.read_text().replace('initial_cash = "10000"', 'initial_cash = "9000"')
+    )
+    settings.strategy_config_path = str(changed)
     with TestClient(create_app(settings)) as client:
         assert client.get("/dashboard/data", auth=("admin", PASSWORD)).status_code == 503
 
