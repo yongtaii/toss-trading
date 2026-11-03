@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Toss Trading · PAPER 대시보드</title>
+    <title>Toss Trading · LIVE 대시보드</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/dashboard/style.css" />
     <script defer src="/dashboard/app.js"></script>
@@ -18,19 +18,18 @@
       <span class="nav-label">WORKSPACE</span>
       <nav aria-label="주 메뉴">
         <a class="active" href="#overview"><span>◫</span> 대시보드</a
-        ><a href="#signals"><span>◎</span> 진입 조건</a
         ><a href="#positions"><span>▤</span> 포지션</a
         ><a href="#activity"><span>◷</span> 활동 기록</a>
       </nav>
       <div class="sidebar-note">
-        <span class="status-dot"></span> PAPER 환경
+        <span class="status-dot"></span> LIVE 원장
         <p>실제 시세로 관찰하는<br />나의 자동매매 전략</p>
       </div>
     </aside>
     <main id="overview">
       <header>
         <div class="breadcrumb">내 트레이딩 <span>/</span> 대시보드</div>
-        <span class="paper-badge">PAPER ONLY</span>
+        <span id="live-status" class="paper-badge">LIVE 상태 확인 중</span>
       </header>
       <section class="page-heading">
         <div>
@@ -39,19 +38,15 @@
           <p class="muted">매매 결과와 지금의 상태를 확인하세요.</p>
         </div>
         <div class="heading-actions">
-          <label class="sr-only" for="ledger">원장 선택</label
-          ><select id="ledger">
-            <option value="primary">기본 전략</option>
-            <option value="compare" disabled>비교 전략 · 미설정</option></select
-          ><button id="refresh" type="button">↻ 새로고침</button>
+          <button id="refresh" type="button">↻ 새로고침</button>
         </div>
       </section>
       <div id="notice" class="notice" role="status" aria-live="polite">
-        PAPER 원장을 불러오고 있습니다.
+        LIVE 원장을 불러오고 있습니다.
       </div>
       <section class="metrics" aria-label="자산 요약">
         <article class="metric primary">
-          <span>총자산 <small>USD</small></span>
+          <span>전략 총자산 <small>USD</small></span>
           <h2 id="equity">—</h2>
           <p id="total-pnl">원장 연결 대기</p>
           <div class="metric-decoration" aria-hidden="true">↗</div>
@@ -67,7 +62,7 @@
           <p>최근 평가가 기준 · 매수 비용 반영</p>
         </article>
         <article class="metric">
-          <span>보유 현금</span>
+          <span>전략 현금</span>
           <h2 id="cash">—</h2>
           <p id="reserved">주문 예약금 —</p>
         </article>
@@ -110,7 +105,7 @@
           <div class="panel-heading">
             <div>
               <h2>누적 실현손익</h2>
-              <p>원장 시작 이후 · 모의 매도 체결 기준</p>
+              <p>원장 시작 이후 · 실제 매도 체결 기준</p>
             </div>
             <span class="subtle-badge">USD</span>
           </div>
@@ -141,6 +136,14 @@
               <dd id="last-event">—</dd>
             </div>
             <div>
+              <dt>계좌 대조</dt>
+              <dd id="account-check">—</dd>
+            </div>
+            <div>
+              <dt>계좌 매수 가능 금액</dt>
+              <dd id="broker-buying-power">—</dd>
+            </div>
+            <div>
               <dt>리스크 상태</dt>
               <dd id="risk">—</dd>
             </div>
@@ -156,23 +159,11 @@
         id="watchlist"
         aria-label="관찰 종목"
       ></section>
-      <section class="panel signals-panel" id="signals">
-        <div class="panel-heading">
-          <div>
-            <h2>종목별 진입 조건</h2>
-            <p>마지막 완료 5분봉의 전략 판단과 현재 원장의 진입 차단 조건</p>
-          </div>
-          <span class="subtle-badge">조건 충족 후 엔진에서 주문 검증</span>
-        </div>
-        <div id="entry-conditions" class="entry-grid">
-          <p class="empty">첫 전략 판단을 기다리고 있습니다.</p>
-        </div>
-      </section>
       <section class="panel" id="positions">
         <div class="panel-heading">
           <div>
             <h2>포지션 · 주문</h2>
-            <p>모의 원장의 보유 자산과 체결 대기 주문</p>
+            <p>LIVE 전략이 관리하는 보유 종목과 최근 주문</p>
           </div>
           <div class="tabs" role="group" aria-label="내역 선택">
             <button
@@ -183,7 +174,7 @@
             >
               보유 포지션</button
             ><button id="orders-tab" type="button" aria-pressed="false">
-              미체결 주문
+              최근 주문
             </button>
           </div>
         </div>
@@ -215,7 +206,7 @@
       </section>
       <footer>
         <span
-          >Toss Trading <span class="footer-dot">·</span> 개인 PAPER
+          >Toss Trading <span class="footer-dot">·</span> 개인 LIVE
           모니터</span
         ><span id="updated">10초마다 자동 갱신</span>
       </footer>

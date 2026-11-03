@@ -26,137 +26,39 @@ const time = (value) =>
       }).format(new Date(value))
     : "기록 없음";
 const labels = {
-  BUY_FILL: "모의 매수 체결",
-  SELL_FILL: "모의 매도 체결",
-  ORDER_SUBMITTED: "주문 제출",
-  ENTRY_REJECTED: "신규 진입 차단",
-  DECISION: "전략 판단",
-  API_ERROR: "시장 데이터 조회 오류",
-  DAILY_LOSS_LIMIT: "일일 손실 한도 도달",
-  STOP: "손절",
-  DAILY_SUMMARY: "일일 결과",
-  CLOSED_OR_MISSING_CALENDAR: "장외 또는 시장 일정 없음",
-  WARMUP_FALLBACK: "당일 지표로 워밍업",
-  PRIOR_SESSION_SEEDED: "전일 지표 준비 완료",
-  REJECTED_DATA: "데이터 검증 거부",
-  EXIT_BLOCKED: "청산 대기",
-  FLATTEN_UNRESOLVED: "마감 청산 미완료",
-  CANCELLED: "주문 취소",
-  RECONCILED: "원장 준비 완료",
-  OPPOSING_GROUP: "반대 방향 그룹 보유",
-  GROUP_RISK_LIMIT: "그룹 위험 한도",
-  VOLUME_HISTORY_INSUFFICIENT: "시간대 거래량 이력 부족",
+  BUY_FILL: "실매수 체결",
+  SELL_FILL: "실매도 체결",
+  WEEKLY_INTENT: "전략 주문 준비",
+  LIVE_ORDER_SENDING: "실주문 전송 중",
+  LIVE_ORDER_ACK: "브로커 주문 접수",
+  LIVE_ORDER_UNKNOWN: "주문 결과 확인 필요",
+  LIVE_ORDER_ATTACHED: "브로커 주문 연결 완료",
+  LIVE_ENTRY_BLOCKED: "신규 매수 차단",
+  LIVE_ENTRY_EXPIRED: "매수 주문 준비 만료",
+  LIVE_RECONCILIATION_BLOCKED: "계좌 대조 실패",
+  LIVE_CANCEL_SENDING: "취소 전송 중",
+  LIVE_CANCEL_ACK: "취소 요청 접수",
+  BROKER_FEE_ADJUSTMENT: "브로커 수수료 정산",
 };
-const checkLabels = {
-  complete_contiguous_session: "정규장 분봉 연속성",
-  warmup: "지표 워밍업",
-  volume_available: "거래량 데이터",
-  stretched_below_vwap: "VWAP 하방 이탈 폭",
-  stretched_above_vwap: "VWAP 상방 이탈 폭",
-  vwap_cross_down: "VWAP 하향 돌파",
-  confirmed_reversal: "완료 봉 전환 확인",
-  recovery_covers_costs: "회복 폭 대비 비용",
-  net_reward_covers_stop: "비용 차감 후 손익비",
-  fresh_signal_quote: "기초 ETF 시세 유효",
-  after_open: "개장 후 대기 시간",
-  before_close: "마감 전 진입 시간",
-  atr_positive: "유효한 ATR",
-  volume: "거래량 조건",
-  rsi: "RSI 조건",
-  vwap_cross_up: "VWAP 상향 돌파",
-  reconciled: "원장 준비",
-  no_overnight_positions: "전일 잔여 포지션 없음",
-  regular_session: "정규장",
-  entry_window: "진입 가능 시간",
-  not_held: "동일 종목 미보유",
-  no_pending: "동일 종목 미체결 없음",
-  loss_limit: "일일 손실 한도",
-  slots: "포지션 여유",
-  opposing_group: "반대 방향 그룹 미보유",
-  group_risk: "그룹 위험 여유",
-  entry_count: "종목별 진입 횟수",
-  cooldown: "쿨다운 종료",
-  all_position_marks_fresh: "보유 종목 평가가 유효",
-  fresh_symbol_quote: "해당 종목 시세 유효",
-  worker_running: "수집기 heartbeat",
-  market_data_ready: "최근 시세 수집 성공",
-  entries_enabled: "수집 오류 없이 진입 허용",
-  fresh_bar: "신호 분봉 유효",
-  quote_available: "호가 존재",
-  allowlisted: "거래 허용 종목",
-  atr: "ATR 대비 가격 유효",
-  fresh_quote: "호가 유효 시간",
-  spread: "스프레드 한도",
-  cost: "비용 한도",
-  minimum_quantity: "최소 주문 수량",
-  new_signal: "미처리 신호",
-};
-const preciseMoney = (value) =>
-  value == null
-    ? "—"
-    : new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 4,
-      }).format(Number(value));
 function reasonLabel(value) {
-  if (value === "OPPOSING_GROUP") return "반대 방향 그룹 보유";
-  if (value === "GROUP_RISK_LIMIT") return "그룹 위험 한도 부족";
-  const key = String(value).toLowerCase();
-  const reasons = {
-    complete_contiguous_session: "정규장 분봉 누락",
-    warmup: "지표 워밍업 중",
-    volume_available: "거래량 데이터 부족",
-    stretched_below_vwap: "VWAP 이탈 폭 부족",
-    after_open: "개장 후 대기 시간",
-    before_close: "마감 전 신규 진입 중단",
-    atr_positive: "유효한 ATR 대기",
-    volume: "거래량 조건 미충족",
-    rsi: "RSI 조건 미충족",
-    vwap_cross_up: "VWAP 상향 돌파 대기",
-    reconciled: "원장 준비 대기",
-    no_overnight_positions: "전일 잔여 포지션 확인 필요",
-    regular_session: "정규장 외",
-    entry_window: "진입 허용 시간 밖",
-    not_held: "이미 보유 중",
-    no_pending: "미체결 주문 대기",
-    loss_limit: "일일 손실 한도 조건 미충족",
-    slots: "최대 포지션 수 도달",
-    opposing_group: "반대 방향 그룹 보유",
-    group_risk: "그룹 위험 여유 부족",
-    entry_count: "오늘 진입 횟수 한도",
-    cooldown: "쿨다운 진행 중",
-    all_position_marks_fresh: "보유 종목 평가가 갱신 필요",
-    fresh_symbol_quote: "종목 시세 없음 또는 갱신 지연",
-    worker_running: "수집기 heartbeat 확인 필요",
-    market_data_ready: "최신 시세 수집 확인 필요",
-    entries_enabled: "수집 문제로 신규 진입 중단",
-    fresh_bar: "신호 분봉 갱신 필요",
-    quote_available: "호가 대기",
-    fresh_quote: "호가 갱신 필요",
-    new_signal: "이미 처리한 신호",
-  };
-  if (reasons[key]) return reasons[key];
-  if (checkLabels[key]) return checkLabels[key] + " 미충족";
-  const messages = {
-    "Calendar unavailable; new entries suspended":
-      "시장 일정 조회 실패 · 신규 진입 중단",
-    "Market data or calendar unavailable; new entries suspended":
-      "시세 또는 시장 일정 조회 실패 · 신규 진입 중단",
-    "Prior session candles unavailable; intraday-only warmup":
-      "전일 분봉 조회 실패 · 당일 데이터로 워밍업",
-    "candles unavailable": "분봉 조회 실패",
-    "orderbook unavailable": "호가 조회 실패",
-    "candles missing or stale": "분봉 누락 또는 갱신 지연",
-    "orderbook missing or stale": "호가 누락 또는 갱신 지연",
-  };
-  if (messages[value]) return messages[value];
-  const parts = String(value).match(/^([A-Z]+): (.+)$/);
-  return parts
-    ? `${parts[1]} · ${messages[parts[2]] || parts[2]}`
-    : String(value);
+  return ({
+    WEEKLY_ENTRY: "주간 기본 전략 매수",
+    CLOSE_STOP_NEXT_OPEN: "종가 손절 조건",
+    CLOSE_TARGET_NEXT_OPEN: "종가 익절 조건",
+    TIME: "20거래일 보유",
+    SIGNAL: "주간 상승 신호 해제",
+    MANUAL_FLATTEN: "관리 포지션 청산",
+    account_or_order_verification_failed: "계좌 또는 주문 대조 실패",
+    live_poll_failed: "LIVE 조회 오류",
+    cancellation_response_unknown: "취소 결과 확인 필요",
+  })[value] || String(value);
 }
+
+let snapshot = null;
+let view = "positions";
+let controller;
+let requestId = 0;
+
 function tickMarketClock() {
   const market = snapshot?.market;
   if (!market) return;
@@ -239,125 +141,6 @@ function renderHealth(data) {
   }
   tickMarketClock();
 }
-function renderEntryConditions(rows = []) {
-  const root = $("entry-conditions");
-  root.replaceChildren();
-  if (!rows.length) {
-    root.append(el("p", "empty", "전략 판단 기록을 기다리고 있습니다."));
-    return;
-  }
-  const statuses = {
-    closed: "장외 대기",
-    warming_up: "데이터 준비 중",
-    stale: "판단 기록 지연",
-    blocked: "진입 차단",
-    waiting: "조건 대기",
-    signal: "매수 신호 기록",
-  };
-  for (const row of rows) {
-    const card = el("article", "entry-card");
-    const top = el("div", "entry-top");
-    top.append(
-      el("span", "entry-name", `${row.symbol} · ${row.signal_symbol || row.symbol} 기준`),
-      el("span", `entry-status ${row.status}`, statuses[row.status]),
-    );
-    card.append(top);
-    let reason;
-    if (row.status === "closed")
-      reason = "정규장 밖에서는 신규 진입하지 않습니다.";
-    else if (!row.gates.worker_running)
-      reason = "수집기 실행 상태를 확인하세요.";
-    else if (!row.decision_fresh)
-      reason =
-        row.indicators?.close != null
-          ? "새로운 5분봉 판단을 기다리고 있습니다."
-          : row.failed_checks?.length
-            ? row.failed_checks.map(reasonLabel).join(" · ")
-            : "정규장 분봉과 지표 준비를 기다리고 있습니다.";
-    else if (row.failed_gates.length)
-      reason = row.failed_gates.map(reasonLabel).join(" · ");
-    else if (row.failed_checks.length)
-      reason = row.failed_checks.map(reasonLabel).join(" · ");
-    else
-      reason =
-        row.status === "signal"
-          ? "매수 신호가 기록됐습니다. 주문 수량·호가·비용은 엔진에서 최종 검증합니다."
-          : "다음 진입 신호를 기다리고 있습니다.";
-    card.append(
-      el("p", "entry-reason", reason),
-      el(
-        "p",
-        "entry-at",
-        `5분봉 판단 ${time(row.decision_at)}${row.decision_at && !row.decision_fresh ? " · 이전 기록" : ""}`,
-      ),
-    );
-    const values = el("dl", "entry-values");
-    for (const [label, value] of [
-      ["5분봉 종가", row.indicators.close],
-      ["당일 VWAP", row.indicators.vwap],
-      ["ATR · 5분봉", row.indicators.atr],
-      [row.signal_direction === -1 ? "진입 기준 · 종가가 이 값 초과" : "진입 기준 · 종가가 이 값 미만", row.entry_above ?? row.entry_below],
-    ]) {
-      const item = el("div");
-      item.append(el("dt", "", label), el("dd", "", preciseMoney(value)));
-      values.append(item);
-    }
-    card.append(values);
-    const distance = row.distance_to_entry;
-    card.append(
-      el(
-        "p",
-        "entry-distance",
-        distance == null
-          ? "진입 기준 계산 대기"
-          : (row.checks.stretched_below_vwap ?? row.checks.stretched_above_vwap)
-            ? "마지막 5분봉 종가의 VWAP 이탈 폭 충족"
-            : Number(distance) === 0
-              ? "진입 경계값 도달 · 추가 이탈 필요"
-              : `마지막 5분봉 종가에서 ${preciseMoney(distance)} 초과 ${row.signal_direction === -1 ? "상승" : "하락"} 시 가격 조건 충족`,
-      ),
-    );
-    const detail = el("details", "entry-detail");
-    detail.append(el("summary", "", "조건별 결과와 마지막 실행 판단"));
-    for (const [heading, checks] of [
-      ["전략 조건 · 마지막 5분봉", row.checks],
-      ["원장·시세 조건 · 현재 조회 기준", row.gates],
-    ]) {
-      const group = el("div", "check-group");
-      group.append(el("h3", "", heading));
-      if (!Object.keys(checks).length)
-        group.append(el("p", "entry-last", "판단 기록 없음"));
-      for (const [key, passed] of Object.entries(checks)) {
-        const line = el("div", `check-row ${passed ? "pass" : "fail"}`);
-        line.append(
-          el("span", "", checkLabels[key] || key),
-          el("span", "", passed ? "충족" : "미충족"),
-        );
-        group.append(line);
-      }
-      detail.append(group);
-    }
-    if (row.cooldown_until)
-      detail.append(
-        el("p", "entry-last", `쿨다운 종료 ${time(row.cooldown_until)}`),
-      );
-    if (row.last_entry)
-      detail.append(
-        el(
-          "p",
-          "entry-last",
-          `마지막 실행 판단 ${time(row.last_entry.time)} · ${labels[row.last_entry.event] || row.last_entry.event}${row.last_entry.reasons?.length ? " · " + row.last_entry.reasons.map(reasonLabel).join(" / ") : ""}`,
-        ),
-      );
-    card.append(detail);
-    root.append(card);
-  }
-}
-
-let snapshot = null;
-let view = "positions";
-let controller;
-let requestId = 0;
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -495,8 +278,8 @@ function renderPortfolio() {
         "empty",
         snapshot
           ? positions
-            ? "현재 보유 중인 모의 포지션이 없습니다."
-            : "체결 대기 중인 모의 주문이 없습니다."
+            ? "현재 보유 중인 전략 포지션이 없습니다."
+            : "기록된 실주문이 없습니다."
           : "원장 연결 대기",
       );
     cell.colSpan = titles.length;
@@ -521,7 +304,7 @@ function renderPortfolio() {
           p.symbol,
           p.side === "BUY" ? "매수" : "매도",
           `${number(p.quantity)} / ${number(p.filled)}`,
-          money(p.limit),
+          p.side === "SELL" ? "시장가" : money(p.limit),
           p.status,
           time(p.submitted),
         ];
@@ -608,6 +391,11 @@ function render(data) {
   $("trade-count").textContent = number(data.trades.length);
   $("fees").textContent = money(summary.fees);
   $("strategy").textContent = data.strategy;
+  $("account-check").textContent = data.reconciled
+    ? `대조 완료 · ${time(data.account_verified_at)}`
+    : "대조 대기 또는 실패";
+  $("broker-buying-power").textContent = money(data.broker_buying_power);
+  $("broker-buying-power").title = `마지막 대조: ${time(data.account_verified_at)}`;
   $("last-event").textContent = time(data.last_event);
   $("risk").textContent = data.loss_halted
     ? "일일 손실 한도 · 진입 중단"
@@ -624,22 +412,20 @@ function render(data) {
     delayed: "갱신 지연",
     unknown: "기록 없음",
   }[data.engine_status];
+  const closed = data.market?.is_open === false && data.worker?.status === "running";
   $("notice").className =
     "notice" +
-    (data.engine_status === "delayed" || data.loss_halted ? " error" : "");
+    ((!closed && data.engine_status === "delayed") || data.loss_halted ? " error" : "");
   $("notice").textContent =
-    data.engine_status === "delayed"
+    closed
+      ? "미국 정규장 외 · 마지막으로 저장된 LIVE 잔고와 거래 내역입니다."
+      : data.engine_status === "delayed"
       ? `엔진 마지막 기록: ${time(data.last_event)}. worker 실행 상태를 확인하세요. 표시된 금액은 마지막 저장 값입니다.`
       : data.engine_status === "unknown"
-        ? "원장은 연결됐지만 엔진 실행 기록이 없습니다. PAPER worker를 실행하면 데이터가 갱신됩니다."
+        ? "LIVE 원장이 연결됐습니다. 첫 정규장 처리 기록을 기다리고 있습니다."
         : data.loss_halted
           ? "일일 손실 한도에 도달해 신규 진입이 중단됐습니다."
-          : "PAPER 원장 연결됨 · 총자산은 마지막 평가가 기준이며 예상 매도 비용은 차감 전입니다.";
-  const compareOption = $("ledger").options[1];
-  compareOption.disabled = !data.compare_available;
-  compareOption.textContent = data.compare_available
-    ? "비교 전략"
-    : "비교 전략 · 미설정";
+          : "LIVE 원장 연결됨 · 총자산은 마지막 평가가 기준이며 예상 매도 비용은 차감 전입니다.";
   $("watchlist").replaceChildren();
   for (const ticker of data.symbols) {
     const card = el("article", "ticker");
@@ -663,7 +449,6 @@ function render(data) {
     $("watchlist").append(card);
   }
   renderHealth(data);
-  renderEntryConditions(data.entry_conditions);
   renderChart(data.trades);
   renderPortfolio();
   renderEvents();
@@ -677,18 +462,42 @@ async function refresh() {
   const timeout = setTimeout(() => activeController.abort(), 8000);
   $("refresh").disabled = true;
   try {
-    const response = await fetch(
-      `/dashboard/data?ledger=${encodeURIComponent($("ledger").value)}`,
+    const liveRequest = fetch("/dashboard/live-status", {
+      signal: activeController.signal,
+      cache: "no-store",
+      credentials: "same-origin",
+    })
+      .then((response) => response.ok ? response.json() : null)
+      .then((live) => {
+        if (id !== requestId) return;
+        $("live-status").textContent =
+          live?.worker === "running"
+            ? ({
+                run: "LIVE · 실매수 허용",
+                pause: "LIVE · 신규 매수 일시정지",
+                flatten: "LIVE · 청산 모드",
+              }[live.control] || "LIVE · 제어 상태 확인 불가")
+            : ({
+                unconfigured: "LIVE 상태 연결 안 됨",
+                stopped: "LIVE · 실행기 정지",
+                delayed: "LIVE · 상태 갱신 지연",
+              }[live?.worker] || "LIVE 상태 확인 불가");
+      })
+      .catch(() => {
+        if (id === requestId) $("live-status").textContent = "LIVE 상태 확인 불가";
+      });
+    const [response] = await Promise.all([fetch(
+      "/dashboard/data",
       {
         signal: activeController.signal,
         cache: "no-store",
         credentials: "same-origin",
       },
-    );
+    ), liveRequest]);
     if (!response.ok)
       throw new Error(
         response.status === 503
-          ? "PAPER 원장을 읽지 못했습니다. worker 실행 여부와 원장·전략 설정을 확인하세요."
+          ? "LIVE 원장을 읽지 못했습니다. worker 실행 여부와 원장·전략 설정을 확인하세요."
           : response.status === 401
             ? "인증이 만료됐습니다. 페이지를 다시 열어 로그인하세요."
             : `원장 조회에 실패했습니다 (${response.status}).`,
@@ -712,43 +521,6 @@ async function refresh() {
   }
 }
 $("refresh").addEventListener("click", refresh);
-$("ledger").addEventListener("change", () => {
-  snapshot = null;
-  for (const id of [
-    "equity",
-    "realized",
-    "unrealized",
-    "cash",
-    "total-pnl",
-    "reserved",
-    "strategy",
-    "session",
-    "last-event",
-    "risk",
-    "trade-count",
-    "fees",
-    "worker-state",
-    "worker-phase",
-    "heartbeat",
-    "feed-state",
-    "feed-badge",
-    "feed-last-success",
-    "calendar-last-success",
-    "market-countdown",
-    "market-next-open",
-    "market-source",
-  ])
-    $(id).textContent = "—";
-  $("chart").replaceChildren(
-    el("p", "empty", "선택한 원장을 불러오고 있습니다."),
-  );
-  $("watchlist").replaceChildren();
-  $("collector-error").hidden = true;
-  renderEntryConditions();
-  renderPortfolio();
-  renderEvents();
-  refresh();
-});
 $("positions-tab").addEventListener("click", () => {
   view = "positions";
   renderPortfolio();

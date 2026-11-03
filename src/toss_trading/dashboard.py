@@ -1,93 +1,40 @@
-"""Authenticated, broker-independent PAPER dashboard. Never initializes a ledger."""
+"""Authenticated, read-only dashboard for the LIVE strategy ledger."""
 
 import json
 import secrets
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import inspect, select
-from sqlalchemy.exc import SQLAlchemyError
 
 from toss_trading.config import Settings
 from toss_trading.domain import State
+from toss_trading.live.control import read_control
 from toss_trading.monitoring import market_view, worker_view
-from toss_trading.persistence import Store, events, symbol_signals, worker_status
-from toss_trading.persistence import ledger as ledger_table
-from toss_trading.risk import entry_state_checks
-from toss_trading.trading_config import TradingConfig, load_config
+from toss_trading.trading_config import TradingConfig
 
 ASSETS = Path(__file__).with_name("static")
 
 
-def symbol_view(
-    symbol: str,
-    state: State,
-    config: TradingConfig,
-    saved: dict,
-    worker: dict,
-    market: dict,
-    now: datetime,
-) -> dict:
-    decision = saved.get("decision") or {}
-    indicators = decision.get("indicators") or {}
-    at = datetime.fromisoformat(decision["time"]) if decision.get("time") else None
-    current_session = bool(
-        at
-        and state.session
-        and state.session.open < at <= state.session.close
-        and state.session.contains(now)
-    )
-    fresh = bool(
-        current_session and 0 <= (now - at).total_seconds() <= 300 + config.max_bar_age_seconds
-    )
-    gates = entry_state_checks(state, symbol, now, state.session, config) if state.session else {}
-    mark_at = state.mark_times.get(symbol)
-    gates["fresh_symbol_quote"] = bool(
-        mark_at and 0 <= (now - mark_at).total_seconds() <= config.max_quote_age_seconds
-    )
-    gates["worker_running"] = worker["status"] == "running"
-    gates["market_data_ready"] = worker.get("market_data_status") == "success"
-    threshold = None
-    distance = None
-    source, direction, _ = config.signal_source(symbol)
-    failed_checks = [key for key, ok in decision.get("checks", {}).items() if not ok]
-    failed_gates = [key for key, ok in gates.items() if not ok]
-    if not market["is_open"]:
-        status = "closed"
-    elif worker["status"] != "running":
-        status = "blocked"
-    elif not fresh:
-        status = "warming_up" if not indicators else "stale"
-    elif failed_gates:
-        status = "blocked"
-    elif failed_checks or decision.get("signal") != "BUY_SIGNAL":
-        status = "waiting"
-    else:
-        status = "signal"
-    return {
-        "symbol": symbol,
-        "signal_symbol": source,
-        "signal_direction": direction,
-        "status": status,
-        "decision_at": at,
-        "decision_fresh": fresh,
-        "signal": decision.get("signal"),
-        "indicators": indicators,
-        "checks": decision.get("checks", {}),
-        "gates": gates,
-        "failed_checks": failed_checks,
-        "failed_gates": failed_gates,
-        "entry_below": str(threshold) if threshold is not None and direction == 1 else None,
-        "entry_above": str(threshold) if threshold is not None and direction == -1 else None,
-        "distance_to_entry": str(distance) if distance is not None else None,
-        "cooldown_until": state.cooldowns.get(symbol),
-        "last_entry": saved.get("entry"),
-    }
+def live_database(directory: str | None) -> sqlite3.Connection:
+    if not directory:
+        raise ValueError("LIVE dashboard volume is not configured")
+    uri = (Path(directory) / "live.db").resolve().as_uri() + "?mode=ro"
+    return sqlite3.connect(uri, uri=True, timeout=1)
+
+
+def read_worker(connection):
+    row = connection.execute("SELECT payload FROM paper_worker_status WHERE id = 1").fetchone()
+    payload = json.loads(row[0]) if row else {}
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid LIVE heartbeat")
+    return payload
 
 
 def dashboard_router(settings: Settings) -> APIRouter:
@@ -128,64 +75,50 @@ def dashboard_router(settings: Settings) -> APIRouter:
     def stylesheet():
         return FileResponse(ASSETS / "style.css", media_type="text/css")
 
-    @router.get("/data")
-    def data(ledger: Literal["primary", "compare"] = "primary"):
-        compare = settings.compare_config_path is not None
-        if ledger == "compare":
-            if not compare:
-                raise HTTPException(404, "No comparison PAPER strategy configured")
-            path, url = settings.compare_config_path, settings.compare_database_url
-        else:
-            path, url = settings.strategy_config_path, settings.paper_database_url
-        store = None
+    @router.get("/live-status")
+    def live_status():
+        if not settings.dashboard_live_status_dir:
+            return {"worker": "unconfigured", "control": None}
+        directory = Path(settings.dashboard_live_status_dir)
         try:
-            config = load_config(path)
-            store = Store(url.get_secret_value(), config, initialize=False)
-            # SQLite needs an explicit BEGIN to keep both reads on the same snapshot.
-            with store.engine.connect() as conn:
-                if conn.dialect.name == "sqlite":
-                    conn.exec_driver_sql("BEGIN")
-                row = (
-                    conn.execute(select(ledger_table).where(ledger_table.c.id == 1))
-                    .mappings()
-                    .one()
-                )
-                store.check_config(row["config"], allow_legacy_defaults=True)
-                state = State.model_validate_json(row["payload"])
+            with closing(live_database(settings.dashboard_live_status_dir)) as connection:
+                mode = connection.execute(
+                    "SELECT json_extract(config, '$.mode') FROM paper_ledger WHERE id = 1"
+                ).fetchone()
+                if mode != ("LIVE",):
+                    raise ValueError("A LIVE ledger is required")
+                worker = worker_view(read_worker(connection), datetime.now(UTC), 5)
+            return {
+                "worker": worker["status"],
+                "control": read_control(directory / "live-control.json"),
+            }
+        except (sqlite3.Error, ValueError, TypeError, OSError):
+            return {"worker": "unavailable", "control": None}
+
+    @router.get("/data")
+    def data():
+        try:
+            with closing(live_database(settings.dashboard_live_status_dir)) as connection:
+                connection.execute("BEGIN")
+                row = connection.execute(
+                    "SELECT config, payload FROM paper_ledger WHERE id = 1"
+                ).fetchone()
+                if row is None:
+                    raise ValueError("LIVE ledger has no state")
+                config = TradingConfig.model_validate_json(row[0])
+                if config.mode != "LIVE":
+                    raise ValueError("A LIVE ledger is required")
+                state = State.model_validate_json(row[1])
                 recent = [
-                    json.loads(r[0])
-                    for r in conn.execute(
-                        select(events.c.payload).order_by(events.c.id.desc()).limit(100)
+                    json.loads(record[0])
+                    for record in connection.execute(
+                        """SELECT payload FROM trading_events
+                           WHERE COALESCE(json_extract(payload, '$.event'), '')
+                                 != 'LIVE_ACCOUNT_VERIFIED'
+                           ORDER BY id DESC LIMIT 100"""
                     )
                 ]
-                # These additive projections may not exist until an older worker restarts.
-                inspector = inspect(conn)
-                worker_payload = None
-                saved_signals = {}
-                if inspector.has_table(worker_status.name):
-                    value = conn.execute(
-                        select(worker_status.c.payload).where(worker_status.c.id == 1)
-                    ).scalar_one_or_none()
-                    worker_payload = json.loads(value) if value else None
-                if inspector.has_table(symbol_signals.name):
-                    saved_signals = {
-                        r.symbol: json.loads(r.payload)
-                        for r in conn.execute(select(symbol_signals))
-                    }
-                for record in recent:
-                    symbol = record.get("symbol")
-                    key = (
-                        "decision"
-                        if record.get("event") == "DECISION"
-                        else "entry"
-                        if (
-                            record.get("event") in {"ENTRY_REJECTED", "ORDER_SUBMITTED"}
-                            and record.get("side") == "BUY"
-                        )
-                        else None
-                    )
-                    if symbol and key:
-                        saved_signals.setdefault(symbol, {}).setdefault(key, record)
+                worker_payload = read_worker(connection)
             now = datetime.now(UTC)
             worker = worker_view(worker_payload, now, config.paper_poll_seconds)
             market = market_view(now, worker)
@@ -203,7 +136,7 @@ def dashboard_router(settings: Settings) -> APIRouter:
                         else None,
                     }
                 )
-            # The equity convention matches /v1/paper: marked value before exit costs.
+            # Marked value before exit costs.
             equity = state.equity()
             unrealized = sum(
                 (
@@ -213,9 +146,12 @@ def dashboard_router(settings: Settings) -> APIRouter:
                 Decimal(0),
             )
             return {
-                "mode": "PAPER",
-                "ledger": ledger,
-                "compare_available": compare,
+                "mode": "LIVE",
+                "reconciled": state.reconciled,
+                "account_verified_at": state.live_verified_at,
+                "broker_buying_power": str(state.live_buying_power)
+                if state.live_verified_at
+                else None,
                 "strategy": config.strategy_name,
                 "generated_at": now,
                 "last_event": state.last_event,
@@ -226,12 +162,6 @@ def dashboard_router(settings: Settings) -> APIRouter:
                 "loss_halted": state.loss_halted,
                 "worker": worker,
                 "market": market,
-                "entry_conditions": [
-                    symbol_view(
-                        symbol, state, config, saved_signals.get(symbol, {}), worker, market, now
-                    )
-                    for symbol in config.symbols
-                ],
                 "summary": {
                     "initial_cash": str(config.initial_cash),
                     "equity": str(equity),
@@ -248,14 +178,25 @@ def dashboard_router(settings: Settings) -> APIRouter:
                     for s in config.symbols
                 ],
                 "positions": positions,
-                "orders": [o.model_dump(mode="json") for o in state.pending()],
+                "orders": [
+                    {
+                        "id": o.id,
+                        "symbol": o.symbol,
+                        "side": o.side,
+                        "quantity": o.quantity,
+                        "filled": o.filled,
+                        "limit": o.limit if o.side == "BUY" else None,
+                        "status": o.status,
+                        "submitted": o.submitted,
+                    }
+                    for o in sorted(state.orders.values(), key=lambda o: o.submitted, reverse=True)[
+                        :100
+                    ]
+                ],
                 "trades": state.trades,
                 "events": recent,
             }
-        except (OSError, ValueError, SQLAlchemyError):
-            raise HTTPException(503, "PAPER 원장이 없거나 설정이 일치하지 않습니다.") from None
-        finally:
-            if store is not None:
-                store.close()
+        except (OSError, ValueError, TypeError, sqlite3.Error):
+            raise HTTPException(503, "LIVE 원장을 읽을 수 없습니다.") from None
 
     return router

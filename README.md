@@ -97,8 +97,8 @@ uv run uvicorn toss_trading.api:create_app --factory --host 127.0.0.1 --port 800
 | `/dashboard/` | 원장 대시보드 |
 
 대시보드는 별도의 `DASHBOARD_USERNAME`·`DASHBOARD_PASSWORD`를 사용합니다.
-기존 원장과 설정 해시가 다르면 조회가 거부될 수 있으므로 이전 원장을 덮어쓰거나
-초기화하지 마세요. 연구 백테스트 결과가 기존 PAPER 대시보드에 자동 연결되지는 않습니다.
+웹 대시보드는 LIVE 전략의 현금·보유 종목·주문·체결을 표시합니다.
+Compose에서 LIVE 볼륨을 읽기 전용으로 연결합니다. [LIVE 배포와 대시보드](docs/live-trading.md)
 
 ## 검사와 배포
 

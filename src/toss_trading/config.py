@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     operations_api_key: SecretStr | None = Field(default=None, min_length=32)
     dashboard_username: str = "admin"
     dashboard_password: SecretStr | None = Field(default=None, min_length=16)
+    dashboard_live_status_dir: str | None = None
     paper_database_url: SecretStr = SecretStr("sqlite:///data/paper.db")
     slack_webhook_url: SecretStr | None = None
     strategy_config_path: str = "config/strategy.toml"

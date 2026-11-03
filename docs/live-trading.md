@@ -61,4 +61,9 @@ sudo docker compose -p toss-trading-live -f compose.live.yaml exec live \
 계좌나 주문을 대조할 수 없으면 신규 전송을 보류한다. 주문 전송 결과가 불명확한 경우
 자동 재주문을 피하고 브로커 주문 ID를 확인해 `--attach`로 연결한다.
 `--attach` 작업을 할 때는 먼저 워커를 중지하고 같은 Compose 프로젝트에서 실행한다.
-기존 웹 대시보드는 PAPER 원장 조회용이며, LIVE 상태는 위의 `--status`로 확인한다.
+웹 대시보드에는 LIVE 전략의 현금·평가액·보유 종목·실제 주문과 체결이 표시된다.
+토스 계좌의 매수 가능 금액은 별도 항목이며 마지막 계좌 대조 시점의 값이다.
+
+대시보드 API의 Compose 명령에 `compose.dashboard-live.yaml`을 추가한다.
+이 설정은 `toss-trading-live` 프로젝트의 기본 LIVE 볼륨을 읽기 전용으로 마운트한다.
+대시보드에서 실매수 허용 표시는 실행기의 주문 제어가 `run`이라는 뜻이다.
