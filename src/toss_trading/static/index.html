@@ -9,42 +9,18 @@
     <script defer src="/dashboard/app.js"></script>
   </head>
   <body>
-    <aside class="sidebar">
-      <a class="brand" href="/dashboard/"
-        ><span class="brand-icon">t</span> trading<span class="brand-dot"
-          >.</span
-        ></a
-      >
-      <span class="nav-label">WORKSPACE</span>
-      <nav aria-label="주 메뉴">
-        <a class="active" href="#overview"><span>◫</span> 대시보드</a
-        ><a href="#positions"><span>▤</span> 포지션</a
-        ><a href="#activity"><span>◷</span> 활동 기록</a>
-      </nav>
-      <div class="sidebar-note">
-        <span class="status-dot"></span> LIVE 원장
-        <p>실제 시세로 관찰하는<br />나의 자동매매 전략</p>
-      </div>
-    </aside>
-    <main id="overview">
-      <header>
-        <div class="breadcrumb">내 트레이딩 <span>/</span> 대시보드</div>
+    <header class="live-topbar">
+      <a class="brand" href="/dashboard/"><span class="brand-icon">t</span> trading<span class="brand-dot">.</span></a>
+      <div class="live-topbar-actions">
         <span id="live-status" class="paper-badge">LIVE 상태 확인 중</span>
-      </header>
-      <section class="page-heading">
-        <div>
-          <p class="eyebrow">STRATEGY MONITOR</p>
-          <h1>전략을 한눈에.</h1>
-          <p class="muted">매매 결과와 지금의 상태를 확인하세요.</p>
-        </div>
-        <div class="heading-actions">
-          <button id="refresh" type="button">↻ 새로고침</button>
-        </div>
-      </section>
+        <button id="refresh" type="button">↻ 새로고침</button>
+      </div>
+    </header>
+    <main id="overview" class="live-main">
       <div id="notice" class="notice" role="status" aria-live="polite">
         LIVE 원장을 불러오고 있습니다.
       </div>
-      <section class="metrics" aria-label="자산 요약">
+      <section class="metrics live-summary" aria-label="자산 요약">
         <article class="metric primary">
           <span>전략 총자산 <small>USD</small></span>
           <h2 id="equity">—</h2>
@@ -67,7 +43,7 @@
           <p id="reserved">주문 예약금 —</p>
         </article>
       </section>
-      <section class="health-grid" aria-label="수집기와 시장 상태">
+      <section class="health-grid live-status-strip" aria-label="수집기와 시장 상태">
         <article class="health-card">
           <div class="health-label">
             <span>수집기 heartbeat</span

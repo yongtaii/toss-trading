@@ -71,12 +71,12 @@ async def daily_closes(broker, symbol, days):
     return [closes[day] for day in days]
 
 
-def position_exit(position, completed, closes):
+def position_exit(position, completed, closes, *, basis_day=None):
     opened = position.opened.astimezone(NY).date()
     if len(completed) >= MAX_SESSIONS and opened <= completed[-MAX_SESSIONS]:
         return "TIME"
     for day, close in zip(completed, closes, strict=True):
-        if day >= opened:
+        if day >= (basis_day or opened):
             if close <= position.entry * (1 - STOP):
                 return "CLOSE_STOP_NEXT_OPEN"
             if close >= position.entry * (1 + TARGET):
@@ -84,7 +84,7 @@ def position_exit(position, completed, closes):
     return None
 
 
-def opening_order(state, quote, config, now, day):
+def opening_order(state, quote, config, now, day, *, desired=None, remaining_risk=None):
     price = quote.ask.quantize(
         Decimal(".01") if quote.ask >= 1 else Decimal(".0001"), rounding=ROUND_DOWN
     )
@@ -98,8 +98,13 @@ def opening_order(state, quote, config, now, day):
     )
     equity = state.equity()
     reserved = sum(o.reserved for o in state.pending() if o.side == "BUY")
+    requested = (
+        equity * config.risk_fraction / risk
+        if desired is None
+        else min(desired, remaining_risk / risk)
+    )
     quantity = min(
-        equity * config.risk_fraction / risk,
+        requested,
         config.max_order_usd / unit,
         (min(state.cash, state.live_buying_power) - reserved) / unit,
         quote.ask_size,
@@ -161,7 +166,20 @@ class WeeklyLive:
                     closes = []
                     if position.opened.astimezone(NY).date() > completed[0]:
                         closes = await self.closes(symbol, completed)
-                    reason = position_exit(position, completed, closes)
+                    basis_day = None
+                    if bridge.live.weekly_target_allocation is not None:
+                        basis_day = max(
+                            (
+                                order.last_fill.astimezone(NY).date()
+                                for order in snapshot.orders.values()
+                                if order.side == "BUY"
+                                and order.symbol == symbol
+                                and order.last_fill
+                                and order.last_fill >= position.opened
+                            ),
+                            default=None,
+                        )
+                    reason = position_exit(position, completed, closes, basis_day=basis_day)
                     if reason:
                         due[symbol] = reason
             can_enter = first_of_week and action == "run" and entry_window(session, now)
@@ -218,7 +236,9 @@ class WeeklyLive:
             and self.fees_covered is True
         )
         for order in state.pending():
-            if order.side == "BUY" and (not entries_open or state.loss_halted):
+            if (order.side == "BUY" or order.reason == "WEEKLY_TRIM") and (
+                not entries_open or state.loss_halted
+            ):
                 self.intents.cancel(state, order)
         if action == "flatten":
             due = dict.fromkeys(state.positions, "MANUAL_FLATTEN")
@@ -254,11 +274,60 @@ class WeeklyLive:
             and not (due.keys() & state.positions.keys())
             and not any(o.side == "SELL" for o in state.pending())
         ):
+            allocation = bridge.live.weekly_target_allocation
+            targets = {}
+            if allocation is not None and not state.pending():
+                selected = [symbol for symbol, permitted in eligible.items() if permitted]
+                for symbol in selected:
+                    unit = fresh[symbol].ask * (1 + self.config.entry_cost_bps / 10000)
+                    targets[symbol] = (
+                        state.equity() * allocation / len(selected) / unit
+                    ).to_integral_value(rounding=ROUND_DOWN)
+                for symbol, target in targets.items():
+                    position = state.positions.get(symbol)
+                    key = f"weekly:{day}:{symbol}:TRIM"
+                    if position is None or position.quantity <= target or key in state.orders:
+                        continue
+                    excess = position.quantity - target
+                    self.intents.submit(
+                        state,
+                        Order(
+                            id=key,
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=excess,
+                            submitted=now,
+                            limit=fresh[symbol].bid,
+                            atr=position.initial_risk,
+                            reason="WEEKLY_TRIM",
+                        ),
+                    )
+                    records.append(
+                        {"event": "WEEKLY_INTENT", "order_id": key, "reason": "WEEKLY_TRIM"}
+                    )
             for symbol, permitted in eligible.items():
                 key = f"weekly:{day}:{symbol}:BUY"
-                if not permitted or symbol in state.positions or key in state.orders:
+                if not permitted or key in state.orders:
                     continue
-                order = opening_order(state, fresh[symbol], self.config, now, day)
+                if allocation is None:
+                    if symbol in state.positions or state.pending(symbol):
+                        continue
+                    order = opening_order(state, fresh[symbol], self.config, now, day)
+                else:
+                    if state.pending() or symbol not in targets:
+                        continue
+                    position = state.positions.get(symbol)
+                    desired = targets[symbol] - (position.quantity if position else 0)
+                    pnl = state.equity(self.config.exit_cost_bps) - state.day_equity
+                    order = opening_order(
+                        state,
+                        fresh[symbol],
+                        self.config,
+                        now,
+                        day,
+                        desired=desired,
+                        remaining_risk=max(Decimal(0), bridge.live.daily_loss_usd + pnl),
+                    )
                 if order is not None:
                     self.intents.submit(state, order)
                     records.append(

@@ -17,6 +17,7 @@ class LiveConfig(BaseModel):
     capital_usd: Decimal = Field(gt=0)
     max_order_usd: Decimal = Field(gt=0)
     daily_loss_usd: Decimal = Field(gt=0)
+    weekly_target_allocation: Decimal | None = Field(default=None, gt=0, le=1)
     strategy_path: str = "config/strategy.toml"
     database_url: str = "sqlite:///data/live.db"
     control_path: str = "data/live-control.json"

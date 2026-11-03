@@ -1,5 +1,6 @@
-# Weekly baseline LIVE runner. Keep the account-specific copy outside Git.
+# Weekly SMA20/200 LIVE runner. Keep the account-specific copy outside Git.
 enabled = false
+weekly_target_allocation = "0.30"
 # Required values, deliberately not prefilled:
 # account_seq = ...
 # capital_usd = "..."

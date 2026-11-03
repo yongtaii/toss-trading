@@ -252,6 +252,15 @@ class LiveBridge:
                         rev, state, [{"event": "LIVE_ENTRY_BLOCKED", "order_id": key}]
                     )
                     continue
+            if order.reason == "WEEKLY_TRIM" and (
+                read_control(self.live.control_path) != "run"
+                or state.loss_halted
+                or not entry_window(state.session, now)
+                or first_week_day(now.astimezone(NY).date()) != now.astimezone(NY).date()
+            ):
+                order.status = OrderStatus.CANCELLED
+                self.store.commit(rev, state, [{"event": "LIVE_TRIM_EXPIRED", "order_id": key}])
+                continue
             order.client_order_id = sha256(f"{state.live_run_id}:{key}".encode()).hexdigest()[:32]
             order.broker_request = order_body(order, order.client_order_id)
             order.broker_phase, order.status = "SENDING", OrderStatus.UNKNOWN

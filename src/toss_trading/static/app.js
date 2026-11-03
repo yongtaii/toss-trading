@@ -34,6 +34,7 @@ const labels = {
   LIVE_ORDER_UNKNOWN: "주문 결과 확인 필요",
   LIVE_ORDER_ATTACHED: "브로커 주문 연결 완료",
   LIVE_ENTRY_BLOCKED: "신규 매수 차단",
+  LIVE_TRIM_EXPIRED: "비중 조정 주문 만료",
   LIVE_ENTRY_EXPIRED: "매수 주문 준비 만료",
   LIVE_RECONCILIATION_BLOCKED: "계좌 대조 실패",
   LIVE_CANCEL_SENDING: "취소 전송 중",
@@ -42,7 +43,8 @@ const labels = {
 };
 function reasonLabel(value) {
   return ({
-    WEEKLY_ENTRY: "주간 기본 전략 매수",
+    WEEKLY_ENTRY: "주간 전략 매수",
+    WEEKLY_TRIM: "주간 목표 비중으로 축소",
     CLOSE_STOP_NEXT_OPEN: "종가 손절 조건",
     CLOSE_TARGET_NEXT_OPEN: "종가 익절 조건",
     TIME: "20거래일 보유",

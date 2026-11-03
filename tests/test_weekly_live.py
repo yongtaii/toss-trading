@@ -154,3 +154,45 @@ def test_twenty_completed_sessions_count_the_first_fill_session():
     assert weekly.position_exit(position, completed, [D(50)] * 20) == "TIME"
     position.opened = offline_session(completed[1]).open
     assert weekly.position_exit(position, completed, [D(50)] * 20) is None
+
+
+async def test_target30_splits_two_signals(setup):
+    bridge, _, _ = setup
+    bridge.live = bridge.live.model_copy(
+        update={"weekly_target_allocation": D(".30"), "daily_loss_usd": D(50)}
+    )
+    await weekly.WeeklyLive(bridge).poll()
+    _, state = bridge.load()
+    assert [(o.symbol, o.side, o.quantity) for o in state.pending()] == [
+        ("SOXL", "BUY", D(4)),
+    ]
+
+
+async def test_target30_trims_before_buying_and_pause_cancels_trim(setup):
+    bridge, daily, session = setup
+    bridge.live = bridge.live.model_copy(update={"weekly_target_allocation": D(".30")})
+    rev, state = bridge.load()
+    state.cash = D("1190")
+    state.positions["SOXL"] = Position(
+        symbol="SOXL",
+        quantity=6,
+        entry=50,
+        entry_fees=0,
+        stop=47,
+        target=59,
+        initial_risk=3,
+        opened=offline_session(date(2026, 9, 1)).open,
+    )
+    bridge.store.commit(rev, state, [])
+    daily.side_effect = lambda broker, symbol, days: (
+        [D(50)] * len(days) if symbol == "SOXL" else [D(100 + i) for i in range(len(days))]
+    )
+    worker = weekly.WeeklyLive(bridge)
+    await worker.poll()
+    _, state = bridge.load()
+    assert [(o.id, o.reason, o.quantity) for o in state.pending()] == [
+        (f"weekly:{session.day}:SOXL:TRIM", "WEEKLY_TRIM", D(2)),
+    ]
+    write_control(bridge.live.control_path, "pause")
+    await worker.poll()
+    assert not bridge.load()[1].pending()

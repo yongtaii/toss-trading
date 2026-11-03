@@ -880,3 +880,34 @@ footer {
     font-size: 10px;
   }
 }
+
+/* Compact top bar and account summary for the LIVE ledger. */
+.live-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(16px, 4vw, 48px);
+}
+.live-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+main.live-main {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+.live-summary {
+  gap: 1px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.live-summary .metric {
+  border-radius: 0;
+  min-height: 0;
+}
+.live-status-strip .health-card {
+  min-height: 0;
+  padding-block: 12px;
+}

@@ -40,6 +40,7 @@ async def run(args) -> None:
                         "capital_usd": live.capital_usd,
                         "max_order_usd": live.max_order_usd,
                         "daily_loss_usd": live.daily_loss_usd,
+                        "weekly_target_allocation": live.weekly_target_allocation,
                         "strategy": config.strategy_name,
                         "signal_sources": {s: config.signal_source(s)[0] for s in config.symbols},
                         "account_verified_at": state.live_verified_at,
