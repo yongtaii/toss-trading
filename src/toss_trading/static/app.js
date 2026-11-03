@@ -392,7 +392,13 @@ function render(data) {
   $("reserved").textContent = `주문 예약금 ${money(summary.reserved)}`;
   $("trade-count").textContent = number(data.trades.length);
   $("fees").textContent = money(summary.fees);
-  $("strategy").textContent = data.strategy;
+  const allocation = data.weekly_target_allocation;
+  $("strategy").textContent =
+    data.strategy === "weekly_baseline"
+      ? allocation == null
+        ? "주간 기본 전략"
+        : `주간 전략 · 목표 비중 ${number(Number(allocation) * 100)}%`
+      : data.strategy;
   $("account-check").textContent = data.reconciled
     ? `대조 완료 · ${time(data.account_verified_at)}`
     : "대조 대기 또는 실패";

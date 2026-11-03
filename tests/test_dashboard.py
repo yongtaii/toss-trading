@@ -178,7 +178,9 @@ def test_live_badge_requires_fresh_authenticated_worker_state(live_store, tmp_pa
     live = live_store
     try:
         now = datetime.now(UTC)
-        live.write_worker_status({"heartbeat_at": now.isoformat()})
+        live.write_worker_status(
+            {"heartbeat_at": now.isoformat(), "weekly_target_allocation": "0.30"}
+        )
         write_control(tmp_path / "live-control.json", "run")
         settings = live_dashboard_settings(live_store)
         with TestClient(create_app(settings)) as client:
@@ -188,6 +190,12 @@ def test_live_badge_requires_fresh_authenticated_worker_state(live_store, tmp_pa
                 "worker": "running",
                 "control": "run",
             }
+            assert (
+                client.get("/dashboard/data", auth=("admin", PASSWORD)).json()[
+                    "weekly_target_allocation"
+                ]
+                == "0.30"
+            )
             live.write_worker_status({"heartbeat_at": (now - timedelta(minutes=2)).isoformat()})
             assert client.get(path, auth=("admin", PASSWORD)).json()["worker"] == "delayed"
     finally:

@@ -84,6 +84,11 @@ async def run(args) -> None:
         broker = LiveBroker(settings, live, armed=True)
         bridge = LiveBridge(store, broker, live, config)
         monitor = WorkerMonitor([store])
+        monitor.payload["weekly_target_allocation"] = (
+            str(live.weekly_target_allocation)
+            if live.weekly_target_allocation is not None
+            else None
+        )
         heartbeat = asyncio.create_task(monitor.heartbeat())
         try:
             # Mapping unknown orders is read-only at the broker and does not place orders.

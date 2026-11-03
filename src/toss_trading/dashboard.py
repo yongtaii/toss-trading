@@ -153,6 +153,11 @@ def dashboard_router(settings: Settings) -> APIRouter:
                 if state.live_verified_at
                 else None,
                 "strategy": config.strategy_name,
+                "weekly_target_allocation": (
+                    worker.get("weekly_target_allocation")
+                    if worker["status"] == "running"
+                    else None
+                ),
                 "generated_at": now,
                 "last_event": state.last_event,
                 "engine_status": "unknown"
