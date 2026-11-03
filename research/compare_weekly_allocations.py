@@ -1,4 +1,4 @@
-"""Offline high-allocation weekly portfolios with explicit partial-fill cost basis.
+"""Offline weekly target-allocation portfolios with explicit partial-fill cost basis.
 
 The signal and close-based exits are unchanged. Unlike the legacy entry-budget model,
 target allocation is restored weekly. Averaged entry basis changes on additions and
@@ -14,17 +14,40 @@ from pathlib import Path
 from research import daily_data as lab
 from research import weekly_baseline as original
 
-DEFAULT_POLICY = "legacy_weekly"
+DEFAULT_ALLOCATION = 0.30
+DEFAULT_POLICY = f"target{round(DEFAULT_ALLOCATION * 100)}"
+BASELINE_POLICY = "legacy_weekly"
 TARGETS = (0.90, 0.95, 0.99, 1.0)
+MID_TARGETS = (0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80)
+FINE_TARGETS = tuple(percent / 100 for percent in range(10, 91))
 INITIAL = 1490.0
 ASSETS = ("SOXL", "TQQQ")
+SOXS_PRE_SPLIT_SESSIONS = {"2026-03-04", "2026-07-14"}
 
 
-def simulate(data, start, end, allocation, cost=1):
-    if not 0 < allocation <= 1:
-        raise ValueError("Allocation must be in (0,1]")
-    if allocation not in TARGETS:
-        raise ValueError("Only retained targets 90/95/99/100 percent are supported")
+def simulate(
+    data,
+    start,
+    end,
+    allocation,
+    cost=1,
+    *,
+    inverse=False,
+    inverse_gap=0.0,
+    contrarian=False,
+    inverse_only=False,
+    inverse_entry_lookback=0,
+):
+    if allocation not in FINE_TARGETS + TARGETS:
+        raise ValueError("Allocation must be a whole-percent target from 10–90%, or 95/99/100%")
+    if not 0 <= inverse_gap < 1 or (inverse_gap and not inverse):
+        raise ValueError("Inverse gap requires inverse trading and must be in [0, 1)")
+    if inverse and contrarian:
+        raise ValueError("Choose trend-following inverse or contrarian trading")
+    if inverse_only and not inverse:
+        raise ValueError("Inverse-only trading requires inverse signals")
+    if inverse_entry_lookback < 0 or (inverse_entry_lookback and not inverse_only):
+        raise ValueError("Entry lookback requires inverse-only trading and must be nonnegative")
     days = sorted(data)
     evaluation = [d for d in days if start <= d <= end]
     if not evaluation:
@@ -38,6 +61,7 @@ def simulate(data, start, end, allocation, cost=1):
     next_cycle = 0
     fills, realizations, cycles, curve, exposures = [], [], [], [], []
     clipped = 0
+    assets = lab.TRADED if inverse or contrarian else ASSETS
 
     def buy(symbol, quantity, raw, day, reason):
         nonlocal cash, next_cycle
@@ -164,20 +188,46 @@ def simulate(data, start, end, allocation, cost=1):
         first_of_week = previous is None or original.week(day) != original.week(previous)
         if first_of_week:
             weekly_signal = original.wanted(history)
+            if contrarian:
+                weekly_signal = {source: -signal for source, signal in weekly_signal.items()}
+            if inverse:
+                for source, values in history.items():
+                    if len(values) >= 200:
+                        threshold = sum(values[-200:]) / 200 * (1 - inverse_gap)
+                        if values[-1] < threshold and sum(values[-20:]) / 20 < threshold:
+                            weekly_signal[source] = -1
+                if inverse_only:
+                    weekly_signal = {
+                        source: min(0, signal) for source, signal in weekly_signal.items()
+                    }
         if day in selected_days:
             for s in list(positions):
                 p = positions[s]
-                source = lab.MAPPING[s][0]
+                source, direction, _ = lab.MAPPING[s]
+                if s == "SOXS" and day.isoformat() in ("2026-03-05", "2026-07-15"):
+                    raise ValueError(f"SOXS position spans an unmodeled reverse split on {day}")
                 reason = pending.get(s)
                 if p["age"] >= original.HORIZON:
                     reason = "TIME"
-                elif not weekly_signal[source]:
+                elif weekly_signal[source] != direction:
                     reason = reason or "SIGNAL"
                 if reason:
                     sell(s, p["quantity"], rows[s]["open"], day, reason)
             pending = {}
             if first_of_week:
-                eligible = [s for s in ASSETS if weekly_signal[lab.MAPPING[s][0]]]
+                eligible = []
+                for s in assets:
+                    source, direction, _ = lab.MAPPING[s]
+                    if weekly_signal[source] != direction:
+                        continue
+                    if inverse_entry_lookback and s not in positions:
+                        closes = history[source]
+                        if (
+                            len(closes) <= inverse_entry_lookback
+                            or closes[-1] >= closes[-1 - inverse_entry_lookback]
+                        ):
+                            continue
+                    eligible.append(s)
                 opening_equity = cash + sum(
                     p["quantity"] * rows[s]["open"] for s, p in positions.items()
                 )
@@ -212,6 +262,15 @@ def simulate(data, start, end, allocation, cost=1):
                     pending[s] = "CLOSE_STOP_NEXT_OPEN"
                 elif move >= original.REWARD * original.STOP:
                     pending[s] = "CLOSE_TARGET_NEXT_OPEN"
+            if contrarian and day.isoformat() in SOXS_PRE_SPLIT_SESSIONS and "SOXS" in positions:
+                sell(
+                    "SOXS",
+                    positions["SOXS"]["quantity"],
+                    rows["SOXS"]["close"],
+                    day,
+                    "PRE_SPLIT",
+                    "close",
+                )
             invested = sum(p["quantity"] * rows[s]["close"] for s, p in positions.items())
             exposures.append(
                 {
@@ -269,7 +328,20 @@ def main():
         default=lab.ROOT / "data/weekly-allocation-comparison-20261103-v1",
     )
     parser.add_argument("--history-dir", type=Path, default=lab.ROOT / "data/history")
+    parser.add_argument(
+        "--include-mid-targets", action="store_true", help="Include 10–80%% targets"
+    )
+    parser.add_argument("--fine-grid", action="store_true", help="Compare every 1%% from 10–90%%")
     args = parser.parse_args()
+    targets = MID_TARGETS + TARGETS if args.include_mid_targets else TARGETS
+    if args.fine_grid:
+        targets = FINE_TARGETS
+    targets = (DEFAULT_ALLOCATION, *(target for target in targets if target != DEFAULT_ALLOCATION))
+    policies = (
+        DEFAULT_POLICY,
+        BASELINE_POLICY,
+        *(f"target{round(target * 100)}" for target in targets[1:]),
+    )
     out = args.output.resolve()
     data, paths = original.datasets(args.history_dir.resolve())
     out.mkdir(parents=True, exist_ok=False)
@@ -281,9 +353,9 @@ def main():
     plan = {
         "created_utc": datetime.now(UTC).isoformat(),
         "default_policy": DEFAULT_POLICY,
-        "targets": TARGETS,
+        "targets": targets,
         "initial_cash": INITIAL,
-        "replays": (len(TARGETS) + 1) * len(original.PERIODS) * 2,
+        "replays": (len(targets) + 1) * len(original.PERIODS) * 2,
         "periods": {p: [str(a), str(b)] for p, (a, b) in original.PERIODS.items()},
         "signal": "Same weekly daily-SMA20/200 eligibility; no signal stays in cash",
         "allocation": (
@@ -317,10 +389,10 @@ def main():
     results = {}
     for period, (start, end) in original.PERIODS.items():
         results[period] = {}
-        for policy in (DEFAULT_POLICY, *(f"target{round(x * 100)}" for x in TARGETS)):
+        for policy in policies:
             window = {}
             for cost in (1, 2):
-                if policy == DEFAULT_POLICY:
+                if policy == BASELINE_POLICY:
                     m = original.simulate(data[period], start, end, cost)
                 else:
                     m = simulate(data[period], start, end, int(policy[6:]) / 100, cost)

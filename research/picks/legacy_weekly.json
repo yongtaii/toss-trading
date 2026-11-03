@@ -21,6 +21,6 @@
   "status": "RESEARCH_ONLY_NOT_CONNECTED_TO_PAPER_OR_LIVE",
   "risk_budget_fraction": 0.005,
   "max_buy_including_fee_usd": 298,
-  "display_name": "기본 전략",
-  "is_default": true
+  "display_name": "기존 소액 운용",
+  "is_default": false
 }
