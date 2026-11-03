@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -8,7 +9,7 @@ from fastapi.testclient import TestClient
 from toss_trading.api import create_app
 from toss_trading.config import Settings
 from toss_trading.domain import Order, Position
-from toss_trading.persistence import Store
+from toss_trading.persistence import Store, ledger
 
 PASSWORD = "dashboard-test-password-only"
 CONFIG = Path(__file__).parents[1] / "config" / "strategy.toml"
@@ -141,6 +142,18 @@ def test_dashboard_missing_ledger_fails_without_creating_tables(tmp_path):
         response = client.get("/dashboard/data", auth=("admin", PASSWORD))
         assert response.status_code == 503
         assert str(tmp_path) not in response.text
+
+
+def test_dashboard_reads_ledger_created_before_additive_config_fields(store):
+    old_config = json.loads(store.config_json)
+    del old_config["trail_atr"]
+    with store.engine.begin() as conn:
+        conn.execute(ledger.update().where(ledger.c.id == 1).values(config=json.dumps(old_config)))
+
+    with pytest.raises(ValueError, match="Configuration differs"):
+        store.load()
+    with TestClient(create_app(dashboard_settings(store))) as client:
+        assert client.get("/dashboard/data", auth=("admin", PASSWORD)).status_code == 200
 
 
 def test_dashboard_configuration_mismatch_is_sanitized(store, tmp_path):

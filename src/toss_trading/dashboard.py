@@ -150,8 +150,7 @@ def dashboard_router(settings: Settings) -> APIRouter:
                     .mappings()
                     .one()
                 )
-                if row["config"] != store.config_json:
-                    raise ValueError("Configuration mismatch")
+                store.check_config(row["config"], allow_legacy_defaults=True)
                 state = State.model_validate_json(row["payload"])
                 recent = [
                     json.loads(r[0])

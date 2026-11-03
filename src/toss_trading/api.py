@@ -135,7 +135,7 @@ def create_app(settings: Settings | None = None, broker: BrokerQueries | None = 
     def paper_state(ledger: Literal["primary", "compare"] = "primary"):
         store = paper_store(ledger)
         try:
-            _, state = store.load()
+            _, state = store.load(allow_legacy_defaults=True)
             return {
                 "mode": "PAPER",
                 "strategy": json.loads(store.config_json)["strategy_name"],
