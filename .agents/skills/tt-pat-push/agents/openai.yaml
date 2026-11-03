@@ -1,0 +1,4 @@
+interface:
+  display_name: "Toss Trading 개인 PAT 푸시"
+  short_description: "개인 GitHub PAT로 Toss Trading main을 푸시하고 확인합니다"
+  default_prompt: "$tt-pat-push로 이번 커밋을 GitHub main에 올리는 명령을 준비해줘."
