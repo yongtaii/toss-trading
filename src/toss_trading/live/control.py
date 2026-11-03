@@ -28,8 +28,8 @@ def write_control(path: str | Path, action: str) -> None:
 class AccountLock:
     """SQLite live deployments run on one host; hold this through all broker I/O."""
 
-    def __init__(self, account_seq: int):
-        self.path = Path("/tmp") / f"toss-live-account-{account_seq}.lock"
+    def __init__(self, account_seq: int, directory: Path = Path("/tmp")):
+        self.path = directory / f"toss-live-account-{account_seq}.lock"
         self.handle = None
 
     def __enter__(self):

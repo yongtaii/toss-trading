@@ -1,0 +1,10 @@
+services:
+  api:
+    environment:
+      DASHBOARD_LIVE_STATUS_DIR: /app/live-status
+    volumes:
+      - dashboard_live_data:/app/live-status:ro
+volumes:
+  dashboard_live_data:
+    external: true
+    name: toss-trading-live_live_data

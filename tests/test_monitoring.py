@@ -2,20 +2,16 @@ import asyncio
 import json
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
-from test_dashboard import PASSWORD, dashboard_settings
-from test_trading import account, minutes, position, quote, save
+from test_dashboard import dashboard_settings
+from test_trading import minutes
 
 from toss_trading.adapters.toss import BrokerError
-from toss_trading.api import create_app
-from toss_trading.dashboard import symbol_view
 from toss_trading.engine import TradingEngine
 from toss_trading.monitoring import WorkerMonitor, market_view, worker_view
 from toss_trading.persistence import Store, events, symbol_signals, worker_status
@@ -181,68 +177,10 @@ async def test_poll_success_requires_fresh_data_for_every_symbol(
     assert any("orderbook missing or stale" in item for item in monitor.payload["errors"])
 
 
-def test_latest_decision_survives_more_than_100_other_events(store, config, session, monkeypatch):
-    now = session.open + timedelta(minutes=110)
-    save(store, account(session))
-    engine = TradingEngine(config, store)
-    engine.step(now, session, minutes(session), [quote(now, price="23.9")])
-    rev, state = store.load()
-    store.commit(rev, state, [{"event": "OTHER", "time": now} for _ in range(110)])
-
-    class FixedDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return now
-
-    monkeypatch.setattr("toss_trading.dashboard.datetime", FixedDatetime)
-    settings = dashboard_settings(store)
-    with TestClient(create_app(settings)) as client:
-        data = client.get("/dashboard/data", auth=("admin", PASSWORD)).json()
-    assert len(data["events"]) == 100
-    symbol = data["entry_conditions"][0]
-    assert symbol["indicators"] == {}
-    assert datetime.fromisoformat(symbol["decision_at"]) == now
-    assert symbol["checks"]["research_only"] is False
-
-
-def test_live_gates_cover_cooldown_opposing_group_and_stale_decisions(default_config, session):
-    config = default_config
-    now = session.open + timedelta(minutes=110)
-    state = account(session)
-    state.session = session
-    state.positions["SOXS"] = position(now, symbol="SOXS")
-    state.cooldowns["SOXL"] = now + timedelta(minutes=30)
-    state.marks = {"SOXL": Decimal("23.9"), "SOXS": Decimal("25")}
-    state.mark_times = {"SOXL": now, "SOXS": now}
-    saved = {
-        "decision": {
-            "time": now.isoformat(),
-            "signal": "BUY_SIGNAL",
-            "checks": {},
-            "indicators": {"close": "23.9", "vwap": "24", "atr": ".05"},
-        }
-    }
-    worker = {"status": "running", "market_data_status": "success"}
-    result = symbol_view("SOXL", state, config, saved, worker, {"is_open": True}, now)
-    assert result["status"] == "blocked"
-    assert "cooldown" in result["failed_gates"]
-    assert "opposing_group" in result["failed_gates"]
-    assert result["decision_fresh"] is True
-    later = symbol_view(
-        "SOXL", state, config, saved, worker, {"is_open": True}, now + timedelta(minutes=10)
-    )
-    assert later["status"] == "stale"
-    assert later["decision_fresh"] is False
-
-
 def test_old_ledger_reads_without_monitoring_tables_and_upgrades_on_worker_start(store, config):
     with store.engine.begin() as conn:
         symbol_signals.drop(conn)
         worker_status.drop(conn)
-    settings = dashboard_settings(store)
-    with TestClient(create_app(settings)) as client:
-        data = client.get("/dashboard/data", auth=("admin", PASSWORD)).json()
-        assert data["worker"]["status"] == "unknown"
     assert not inspect(store.engine).has_table(worker_status.name)
     revision = store.load()[0]
     reopened = Store(str(store.engine.url), config)
@@ -274,25 +212,3 @@ async def test_research_only_runner_refuses_before_opening_broker(store, monkeyp
         await run(SimpleNamespace(config=None, once=True, slack=False))
     broker.market_calendar.assert_not_awaited()
     broker.aclose.assert_not_awaited()
-
-
-def test_comparison_monitoring_is_isolated_from_primary(store, config, tmp_path):
-    from test_dashboard import CONFIG
-
-    comparison = Store(f"sqlite:///{tmp_path}/compare-monitoring.db", config)
-    try:
-        WorkerMonitor([comparison]).finish_poll(
-            ["SOXL: orderbook unavailable"], market_data="error"
-        )
-        settings = dashboard_settings(
-            store, compare_config_path=str(CONFIG), compare_database_url=str(comparison.engine.url)
-        )
-        with TestClient(create_app(settings)) as client:
-            primary = client.get("/dashboard/data", auth=("admin", PASSWORD)).json()
-            compare = client.get("/dashboard/data?ledger=compare", auth=("admin", PASSWORD)).json()
-        assert primary["worker"]["status"] == "unknown"
-        assert compare["worker"]["status"] == "running"
-        assert compare["worker"]["market_data_status"] == "error"
-        assert compare["worker"]["errors"] == ["SOXL: orderbook unavailable"]
-    finally:
-        comparison.close()

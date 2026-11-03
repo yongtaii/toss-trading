@@ -1,7 +1,7 @@
 # 조회 API 배포
 
-현재 배포 대상은 조회 API와 기존 원장 대시보드다. 다섯 주간 전략은 오프라인 연구 코드이며
-PAPER·LIVE worker로 배포할 수 없다. 이전 전략 전용 서버 이전·검증·업로드 절차는 제거했다.
+이 문서의 Compose는 조회 API와 LIVE 전략 대시보드를 배포한다.
+주간 기본 전략 LIVE는 별도 Compose 프로젝트로 배포한다. [LIVE 배포 절차](live-trading.md)
 
 ```sh
 cp .env.example .env
@@ -17,9 +17,9 @@ docker compose -f compose.yaml -f compose.aws.yaml up --build -d
 ```
 
 키·환경 파일·실제 계좌별 설정·원장은 Git과 컨테이너 이미지에 넣지 않는다.
-기존 원장과 새 설정의 해시가 다르면 API는 원장 조회를 거부할 수 있다. 이전 원장을
-보존하고 필요한 경우 별도 데이터베이스 경로를 사용한다. 기존 원장의 삭제·강제 변환은
-이번 전략 정리에 포함하지 않았다.
+LIVE 원장과 주문 제어 상태를 표시하려면 API 배포에
+`-f compose.dashboard-live.yaml`을 추가한다. 이 파일은 기존 LIVE 볼륨을 읽기 전용으로
+연결한다.
 
 컨테이너 기동 여부와 `/health` 응답은 전략 실행이나 실제 계좌 수익 검증을 의미하지 않는다.
 현재 Compose에는 자동매매 PAPER 서비스가 없다. 백테스트 재현은 루트 README를 참고한다.

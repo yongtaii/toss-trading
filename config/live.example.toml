@@ -1,17 +1,17 @@
-# Infrastructure example only. Weekly strategies are offline research.
-# LiveConfig.strategy() refuses activation until a separate integration is implemented.
+# Weekly SMA20/200 LIVE runner. Keep the account-specific copy outside Git.
 enabled = false
+weekly_target_allocation = "0.30"
 # Required values, deliberately not prefilled:
 # account_seq = ...
 # capital_usd = "..."
 # max_order_usd = "..."
 # daily_loss_usd = "..."
-strategy_path = "config/strategy.toml"
+strategy_path = "config/strategy-weekly-live.toml"
 database_url = "sqlite:///data/live.db"
 control_path = "data/live-control.json"
 max_verification_age_seconds = 30
 max_entry_age_seconds = 10
 
-# Explicit existing holdings outside the four trade symbols, if acknowledged.
+# Explicit existing holdings outside the reserved ETF universe, if acknowledged.
 # [protected_positions]
 # TLT = "0.1"

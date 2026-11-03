@@ -83,13 +83,21 @@ class Store:
                     pass
         self.load()
 
-    def load(self) -> tuple[int, State]:
+    def check_config(self, saved: str, *, allow_legacy_defaults: bool = False) -> None:
+        if saved == self.config_json:
+            return
+        if allow_legacy_defaults:
+            # Old ledgers omit fields introduced with defaults in later releases.
+            if TradingConfig.model_validate_json(saved).model_dump_json() == self.config_json:
+                return
+        raise ValueError(
+            "Configuration differs from ledger; use a new ledger or reviewed migration"
+        )
+
+    def load(self, *, allow_legacy_defaults: bool = False) -> tuple[int, State]:
         with self.engine.connect() as conn:
             row = conn.execute(select(ledger).where(ledger.c.id == 1)).mappings().one()
-        if row["config"] != self.config_json:
-            raise ValueError(
-                "Configuration differs from ledger; use a new ledger or reviewed migration"
-            )
+        self.check_config(row["config"], allow_legacy_defaults=allow_legacy_defaults)
         return row["revision"], State.model_validate_json(row["payload"])
 
     def commit(self, revision: int, state: State, records: list[dict]) -> None:
