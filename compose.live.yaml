@@ -1,0 +1,16 @@
+# Run as a separate Compose project from the dashboard.
+services:
+  live:
+    image: ${TOSS_LIVE_IMAGE:-toss-trading-live:weekly}
+    command: [".venv/bin/python", "-m", "toss_trading.live.runner", "--config", "config/live.toml", "--execute"]
+    env_file: .env.live
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./config:/app/config:ro
+      - live_data:/app/data
+volumes:
+  live_data:

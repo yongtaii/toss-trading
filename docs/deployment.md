@@ -1,7 +1,7 @@
 # 조회 API 배포
 
-현재 배포 대상은 조회 API와 기존 원장 대시보드다. 다섯 주간 전략은 오프라인 연구 코드이며
-PAPER·LIVE worker로 배포할 수 없다. 이전 전략 전용 서버 이전·검증·업로드 절차는 제거했다.
+이 문서의 Compose는 조회 API와 기존 원장 대시보드를 배포한다.
+주간 기본 전략 LIVE는 별도 Compose 프로젝트로 배포한다. [LIVE 배포 절차](live-trading.md)
 
 ```sh
 cp .env.example .env

@@ -8,9 +8,11 @@ from uuid import uuid4
 from toss_trading.adapters.toss import BrokerError, ConfigurationError
 from toss_trading.domain import ACTIVE, ZERO, OrderStatus
 from toss_trading.live.broker import LiveBroker, order_body
-from toss_trading.live.config import LiveConfig
+from toss_trading.live.config import WEEKLY_STRATEGY, LiveConfig
 from toss_trading.live.control import read_control
 from toss_trading.live.ledger import apply_snapshot, money, usd_positions
+from toss_trading.live.weekly import entry_window, first_week_day
+from toss_trading.marketdata import NY
 from toss_trading.persistence import Store
 from toss_trading.trading_config import TradingConfig
 
@@ -196,7 +198,17 @@ class LiveBridge:
                     0 <= (now - source.at).total_seconds() <= self.config.max_quote_age_seconds
                 )
                 source_valid = False
-                if source_fresh:
+                weekly = self.config.strategy_name == WEEKLY_STRATEGY
+                if weekly:
+                    source_valid = state.session is not None and entry_window(state.session, now)
+                    day = now.astimezone(NY).date()
+                    source_valid = (
+                        source_valid
+                        and first_week_day(day) == day
+                        and order.reason == "WEEKLY_ENTRY"
+                        and order.id == f"weekly:{day}:{order.symbol}:BUY"
+                    )
+                elif source_fresh:
                     move = order.signal_direction * (
                         (source.bid + source.ask) / 2 - order.signal_entry
                     )
@@ -232,6 +244,7 @@ class LiveBridge:
                     or required > state.live_buying_power
                     or required > state.cash - other_reserved
                     or order.quantity * order.limit > self.live.max_order_usd
+                    or (weekly and required > self.config.max_order_usd)
                     or allocated > self.live.capital_usd
                 ):
                     order.status, order.reserved = OrderStatus.CANCELLED, ZERO

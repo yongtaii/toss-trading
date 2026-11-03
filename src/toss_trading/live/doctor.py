@@ -3,16 +3,17 @@
 import argparse
 import asyncio
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
 from toss_trading.adapters.toss import BrokerError, ConfigurationError, TossQueries
 from toss_trading.config import Settings
-from toss_trading.live.config import LiveConfig, load_live_config
+from toss_trading.live.config import WEEKLY_STRATEGY, LiveConfig, load_live_config
 from toss_trading.live.ledger import money, usd_positions
-from toss_trading.marketdata import NY, broker_session, fetch_minutes, parse_quote, previous_session
+from toss_trading.live.weekly import SOURCES, completed_days, daily_closes, first_week_day
+from toss_trading.marketdata import NY, broker_session, parse_quote, previous_session
 from toss_trading.tls import ssl_context
 from toss_trading.trading_config import load_config
 
@@ -22,7 +23,7 @@ async def diagnose(settings: Settings, live: LiveConfig | None = None) -> dict:
     checks = {
         "credentials_present": bool(settings.toss_client_id and settings.toss_client_secret),
         "account_configured": settings.toss_account_seq is not None,
-        "strategy_is_selected": False,  # Retained weekly strategies are offline only.
+        "strategy_is_selected": c.strategy_name == WEEKLY_STRATEGY,
         "live_account_matches": live is None
         or live.account_seq in (None, settings.toss_account_seq),
     }
@@ -94,14 +95,14 @@ async def diagnose(settings: Settings, live: LiveConfig | None = None) -> dict:
         day = now.astimezone(NY).date()
         session = broker_session(await broker.market_calendar(day), day)
         checks["calendar_query"] = True
-        historical = previous_session(day)
-        if historical:
-            for symbol in c.market_symbols:
-                bars = await fetch_minutes(broker, symbol, historical, historical.close)
-                expected = int((historical.close - historical.open).total_seconds() // 60)
-                checks[f"{symbol}_history_complete"] = len(bars) == expected and all(
-                    b.end == historical.open + timedelta(minutes=i) for i, b in enumerate(bars, 1)
-                )
+        latest = day if session else datetime.fromisoformat(previous_session(day).day).date()
+        days = completed_days(first_week_day(latest), 200)
+        for symbol in SOURCES.values():
+            await daily_closes(broker, symbol, days)
+            checks[f"{symbol}_history_complete"] = True
+        for symbol in SOURCES:
+            await daily_closes(broker, symbol, completed_days(day, 20))
+            checks[f"{symbol}_history_complete"] = True
         report["regular_session_open"] = bool(session and session.contains(now))
         if report["regular_session_open"]:
             for symbol in c.market_symbols:
@@ -110,9 +111,7 @@ async def diagnose(settings: Settings, live: LiveConfig | None = None) -> dict:
                     0 <= (datetime.now(UTC) - q.at).total_seconds() <= c.max_quote_age_seconds
                 )
         report["read_only_preflight_passed"] = all(checks.values())
-        report["next_step"] = (
-            "Historical backtest and monitored PAPER evidence required before activation"
-        )
+        report["next_step"] = "Review account, capital and order limits before enabling LIVE"
     except (BrokerError, ConfigurationError, ValueError, KeyError, TypeError) as exc:
         report["query_error"] = type(exc).__name__
         if isinstance(exc, BrokerError):

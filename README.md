@@ -31,10 +31,9 @@ SOXL·SOXS·TQQQ·SQQQ는 유지하지만 이 다섯 전략은 인버스 종목�
 보장하는 규칙은 아닙니다. 비용·수익률·낙폭·기간별 한계는 [비교 보고서](docs/strategy-report.md),
 Git에 보존하는 지표는 [비교 결과 JSON](research/results/weekly-comparison.json)에 있습니다.
 
-**다섯 전략은 아직 PAPER/LIVE 실행기에 연결되지 않은 연구 코드입니다.**
-`config/strategy.toml`은 공통 API·원장을 위한 `research_only` 비매매 설정입니다.
-PAPER runner와 LIVE 전략 로딩은 명시적으로 중단합니다. 과거 전략의 실행 코드·설정·
-전용 탐색기·전용 테스트와 배포 절차는 제거했습니다.
+**기본 전략은 별도 LIVE 실행기로 연결할 수 있습니다.**
+목표 90·95·99·100%형은 오프라인 비교용입니다. LIVE 설정과 계좌 조회 점검 절차는
+[주간 기본 전략 LIVE](docs/live-trading.md)를 참고하세요.
 
 ## 설치와 백테스트
 

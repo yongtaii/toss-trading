@@ -6,18 +6,18 @@ import json
 from contextlib import suppress
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 from toss_trading.adapters.toss import BrokerError, ConfigurationError
 from toss_trading.config import Settings
-from toss_trading.engine import TradingEngine
 from toss_trading.live.bridge import LiveBridge
 from toss_trading.live.broker import LiveBroker
 from toss_trading.live.config import load_live_config
 from toss_trading.live.control import AccountLock, read_control, write_control
 from toss_trading.live.doctor import diagnose
-from toss_trading.live.execution import LiveIntents
+from toss_trading.live.weekly import WeeklyLive
 from toss_trading.monitoring import WorkerMonitor
 from toss_trading.persistence import Store
-from toss_trading.runner import poll_once
 
 
 async def run(args) -> None:
@@ -66,8 +66,19 @@ async def run(args) -> None:
         raise ConfigurationError("Live account does not match TOSS_ACCOUNT_SEQ")
     if live.database_url == settings.paper_database_url.get_secret_value():
         raise ValueError("Live and PAPER must have separate ledgers")
+    live_url = make_url(live.database_url)
+    paper_url = make_url(settings.paper_database_url.get_secret_value())
+    if live_url.get_backend_name() != "sqlite" or not live_url.database:
+        raise ValueError("Weekly LIVE requires a persistent SQLite file")
+    live_path = Path(live_url.database).resolve()
+    if live_url.database == ":memory:" or (
+        paper_url.get_backend_name() == "sqlite"
+        and paper_url.database
+        and live_path == Path(paper_url.database).resolve()
+    ):
+        raise ValueError("Live and PAPER must have separate persistent ledgers")
     Path("data").mkdir(exist_ok=True)
-    with AccountLock(live.account_seq):
+    with AccountLock(live.account_seq, directory=Path("data")):
         store = Store(live.database_url, config)
         broker = LiveBroker(settings, live, armed=True)
         bridge = LiveBridge(store, broker, live, config)
@@ -80,28 +91,28 @@ async def run(args) -> None:
                 await bridge.attach(local_id, broker_id)
                 print("Broker order attached; run a fresh account verification before trading")
                 return
-            engine = TradingEngine(config, store, execution=LiveIntents(config))
+            weekly = WeeklyLive(bridge)
             monitor.publish()
             while True:
                 try:
-                    verified = await bridge.reconcile()
-                    action = read_control(live.control_path)
-                    await poll_once(
-                        [engine],
-                        broker,
-                        monitor,
-                        allow_entries=verified and action == "run",
-                        flatten=action == "flatten",
-                    )
-                    await bridge.flush()
-                except (BrokerError, ConfigurationError, ValueError, KeyError, TypeError):
+                    regular = await weekly.poll()
+                    monitor.finish_poll([], market_data="success")
+                except (
+                    BrokerError,
+                    ConfigurationError,
+                    ValueError,
+                    KeyError,
+                    TypeError,
+                    ArithmeticError,
+                ):
+                    regular = True
                     bridge.block("live_poll_failed")
                     monitor.finish_poll(
                         ["Live poll failed; new entries suspended"], market_data="error"
                     )
                 if args.once:
                     break
-                await asyncio.sleep(config.paper_poll_seconds)
+                await asyncio.sleep(config.paper_poll_seconds if regular else 30)
         finally:
             heartbeat.cancel()
             with suppress(asyncio.CancelledError):

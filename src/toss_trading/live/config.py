@@ -5,7 +5,9 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from toss_trading.config import Settings
-from toss_trading.trading_config import TradingConfig
+from toss_trading.trading_config import TradingConfig, load_config
+
+WEEKLY_STRATEGY = "weekly_baseline"
 
 
 class LiveConfig(BaseModel):
@@ -39,7 +41,26 @@ class LiveConfig(BaseModel):
         return self
 
     def strategy(self) -> TradingConfig:
-        raise ValueError("Retained weekly strategies are offline only; LIVE integration is pending")
+        config = load_config(self.strategy_path)
+        if config.strategy_name != WEEKLY_STRATEGY or config.mode != "LIVE":
+            raise ValueError("Existing research configuration is offline only; select weekly LIVE")
+        return TradingConfig.model_validate(
+            {
+                **config.model_dump(),
+                "symbols": ("SOXL", "TQQQ"),
+                "underlying_signals": True,
+                "groups": {},
+                "opposing_groups": (),
+                "initial_cash": self.capital_usd,
+                "max_order_usd": min(self.max_order_usd, Decimal("298")),
+                "max_positions": 2,
+                "quantity_step": Decimal(1),
+                "risk_fraction": Decimal("0.005"),
+                "stop_atr": Decimal(1),
+                "reward_r": Decimal(3),
+                "hold_overnight": True,
+            }
+        )
 
 
 def load_live_config(path: str | Path) -> LiveConfig:

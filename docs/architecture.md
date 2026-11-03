@@ -24,6 +24,6 @@ Git에서 제외한 `data/`에 저장한다.
 전략 CLI·기준 전략·탐색 기능은 제거했다. 남긴 주간 전략의 실행 경로는 `research/`다.
 
 `config/strategy.toml`은 기존 API·원장 스키마를 위한 비매매 설정이다.
-PAPER runner는 이 설정을 발견하면 브로커 연결 전에 중단한다. `LiveConfig.strategy()`도
-주간 전략 연결이 구현되지 않았다는 오류로 중단한다. 주간 전략을 실행기에 연결하는
-개발은 별도 작업이며, 과거 전략을 대신 실행하도록 우회하지 않는다.
+`config/strategy-weekly-live.toml`은 별도 LIVE worker에서 주간 기본 전략을 선택한다.
+`live/weekly.py`가 완료 일봉·미국 장 일정·호가를 읽어 주문 의도를 만들고,
+`live/bridge.py`가 원장 기록, 실계좌 대조, 주문 전송과 체결 복구를 담당한다.

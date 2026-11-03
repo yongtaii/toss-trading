@@ -1,0 +1,9 @@
+mode = "LIVE"
+strategy_name = "weekly_baseline"
+symbols = ["SOXL", "TQQQ"]
+groups = {}
+opposing_groups = []
+fee_bps = "10"
+slippage_bps = "5"
+sec_fee_bps = "0.206"
+sec_fee_min_usd = "0.01"
