@@ -362,49 +362,6 @@ h1 {
   line-height: 1.8;
   color: #96a0b0;
 }
-.watchlist {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 15px;
-  margin: 23px 0;
-}
-.ticker {
-  background: white;
-  border: 1px solid #e8edf4;
-  border-radius: 11px;
-  padding: 17px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.ticker-icon {
-  width: 35px;
-  height: 35px;
-  background: #edf4ff;
-  color: #4d8fef;
-  border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-.ticker strong {
-  font-size: 12px;
-}
-.ticker small {
-  display: block;
-  font-size: 9px;
-  color: #a2abba;
-  margin-top: 5px;
-}
-.ticker-value {
-  margin-left: auto;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  white-space: nowrap;
-}
 .tabs {
   display: flex;
   background: #f4f6f9;
@@ -540,9 +497,6 @@ footer {
   .metric h2 {
     font-size: 25px;
   }
-  .watchlist {
-    grid-template-columns: repeat(2, 1fr);
-  }
   .middle-grid {
     grid-template-columns: 1.4fr 1fr;
   }
@@ -624,23 +578,6 @@ footer {
   .panel-heading {
     padding: 20px;
     flex-wrap: wrap;
-  }
-  .watchlist {
-    gap: 10px;
-  }
-  .ticker {
-    padding: 12px;
-    gap: 8px;
-  }
-  .ticker-icon {
-    width: 28px;
-    height: 30px;
-  }
-  .ticker-value {
-    font-size: 11px;
-  }
-  .ticker small {
-    font-size: 8px;
   }
   .event {
     padding: 15px 18px;
@@ -899,13 +836,103 @@ main.live-main {
   margin: 0 auto;
 }
 .live-summary {
-  gap: 1px;
-  border-radius: 16px;
-  overflow: hidden;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 .live-summary .metric {
-  border-radius: 0;
   min-height: 0;
+}
+.live-summary + #positions {
+  margin-top: 24px;
+}
+.investment-total {
+  grid-column: 1 / -1;
+}
+.investment-total h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.investment-total h2 {
+  margin: 5px 0 12px;
+  font-size: clamp(34px, 6vw, 52px);
+  overflow-wrap: anywhere;
+}
+#total-pnl {
+  font-size: clamp(19px, 4vw, 26px);
+  font-variant-numeric: tabular-nums;
+}
+.holdings-list {
+  margin: 0;
+  padding: 0 clamp(16px, 3vw, 24px);
+  list-style: none;
+}
+.holding {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid #e8edf4;
+  overflow-wrap: anywhere;
+}
+.holding-information,
+.holding-valuation {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+.holding-identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.holding-identity strong {
+  font-size: 28px;
+  line-height: 1.15;
+}
+.holding-metric {
+  display: grid;
+  gap: 3px;
+}
+.holding-value {
+  font-size: 19px;
+}
+.holding-valuation {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.holding-label,
+.holding-details {
+  color: #526174;
+  font-size: 12px;
+}
+.holding-details {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.holding-details span {
+  flex-shrink: 0;
+}
+#total-pnl.positive,
+.holding-valuation .positive,
+.live-summary h2.positive {
+  color: #ba3136;
+}
+#total-pnl.negative,
+.holding-valuation .negative,
+.live-summary h2.negative {
+  color: #245dc4;
+}
+@media (max-width: 540px) {
+  .live-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .investment-cash {
+    grid-column: 1 / -1;
+  }
 }
 .live-status-strip .health-card {
   min-height: 0;
