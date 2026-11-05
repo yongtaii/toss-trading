@@ -14,8 +14,11 @@ Mac에서 `git worktree list`, `git status -sb`, `git log -1 --oneline`,
 
 원격 `main`이 이미 원하는 커밋을 가리키면 확인 결과를 알려준다.
 개인 PAT 인증이 필요하면 실제 경로와 검토한 커밋 해시를 채워, **Mac zsh 터미널**에
-복사할 아래 블록을 제공한다. 토큰은 사용자가 터미널의 숨김 입력에 붙여넣도록
-안내한다. 토큰을 채팅, 명령 인수, 원격 URL이나 파일로 받지 않는다.
+복사할 아래 블록을 제공한다. 사용자가 기본 체크아웃의 Git에서 제외된 `.env`에
+`GITHUB_PAT`를 한 번 설정하면 이후 푸시에서 재사용한다. 키 이름은
+`.env.example`에 있다. PAT 값은 채팅, 명령 인수, 원격 URL, 출력에 포함하지 않는다.
+지정한 워크트리의 `.env`에서 값을 읽을 수 없으면 터미널에서 숨김 입력을 받는다.
+기본 체크아웃의 `.env`를 다른 워크트리에 복사하지 않는다.
 
 ```zsh
 (
@@ -26,8 +29,18 @@ Mac에서 `git worktree list`, `git status -sb`, `git log -1 --oneline`,
     'https://github.com/yongtaii/toss-trading.git' || exit 1
   expected=$(git rev-parse --verify "$revision^{commit}") || exit 1
 
-  read -rs 'toss_pat?개인 GitHub PAT: ' || exit 1
-  printf '\n'
+  toss_pat=''
+  if [[ -r .env && -x .venv/bin/python ]]; then
+    toss_pat=$(.venv/bin/python -c '
+from dotenv import dotenv_values
+
+print(dotenv_values(".env", interpolate=False).get("GITHUB_PAT") or "")
+') || exit 1
+  fi
+  if [[ -z "$toss_pat" ]]; then
+    read -rs 'toss_pat?개인 GitHub PAT: ' || exit 1
+    printf '\n'
+  fi
   test -n "$toss_pat" || exit 1
   export GH_TOKEN="$toss_pat"
   unset toss_pat
