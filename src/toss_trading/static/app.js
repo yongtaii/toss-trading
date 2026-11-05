@@ -187,11 +187,6 @@ function el(tag, className, text) {
   if (text != null) node.textContent = text;
   return node;
 }
-function setMoney(id, value, colored = false) {
-  const node = $(id);
-  node.textContent = money(value);
-  node.className = colored ? pnlClass(value) : "";
-}
 function svgEl(tag, attributes = {}, text) {
   const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
   for (const [key, value] of Object.entries(attributes))
@@ -434,14 +429,17 @@ function renderEvents() {
 function render(data) {
   snapshot = data;
   const summary = data.summary;
-  setMoney("equity", summary.equity);
-  setMoney("realized", summary.realized, true);
-  setMoney("unrealized", summary.unrealized, true);
-  setMoney("cash", summary.cash);
+  const holdingsValue = Number(summary.equity) - Number(summary.cash);
+  const holdingsPnl = Number(summary.unrealized);
+  const holdingsCost = holdingsValue - holdingsPnl;
+  $("equity").textContent = money(holdingsValue);
+  $("cash").textContent = money(summary.cash);
   const totalPnl = $("total-pnl");
-  totalPnl.textContent =
-    `${signedMoney(summary.total_pnl)} (${signedPercent(Number(summary.return_pct) / 100)})`;
-  totalPnl.className = pnlClass(summary.total_pnl);
+  const holdingsRate = holdingsCost > 0
+    ? ` (${signedPercent(holdingsPnl / holdingsCost)})`
+    : "";
+  totalPnl.textContent = `${signedMoney(holdingsPnl)}${holdingsRate}`;
+  totalPnl.className = pnlClass(holdingsPnl);
   $("reserved").textContent = `이 중 매수 주문 대기 금액 ${money(summary.reserved)}`;
   $("trade-count").textContent = number(data.trades.length);
   $("fees").textContent = money(summary.fees);

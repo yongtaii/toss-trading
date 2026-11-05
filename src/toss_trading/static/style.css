@@ -836,7 +836,7 @@ main.live-main {
   margin: 0 auto;
 }
 .live-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .live-summary .metric {
@@ -917,22 +917,12 @@ main.live-main {
   flex-shrink: 0;
 }
 #total-pnl.positive,
-.holding-valuation .positive,
-.live-summary h2.positive {
+.holding-valuation .positive {
   color: #ba3136;
 }
 #total-pnl.negative,
-.holding-valuation .negative,
-.live-summary h2.negative {
+.holding-valuation .negative {
   color: #245dc4;
-}
-@media (max-width: 540px) {
-  .live-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .investment-cash {
-    grid-column: 1 / -1;
-  }
 }
 .live-status-strip .health-card {
   min-height: 0;
