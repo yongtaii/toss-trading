@@ -333,7 +333,7 @@ h1 {
 }
 .operation dl {
   margin: 0;
-  padding: 0 25px;
+  padding: 0 25px 12px;
 }
 .operation dl div {
   display: flex;
@@ -352,15 +352,6 @@ h1 {
   text-align: right;
   overflow-wrap: anywhere;
   color: #58677b;
-}
-.operation-note {
-  background: #f7f9fc;
-  margin: 19px 25px 22px;
-  padding: 12px;
-  border-radius: 7px;
-  font-size: 10px;
-  line-height: 1.8;
-  color: #96a0b0;
 }
 .tabs {
   display: flex;
@@ -611,7 +602,7 @@ footer {
 
 .health-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-top: 22px;
 }
@@ -649,17 +640,6 @@ footer {
 }
 .state-muted {
   color: #8e9aab;
-}
-.collector-error {
-  margin-top: 14px;
-  padding: 13px 17px;
-  border-radius: 9px;
-  border: 1px solid #f5dfc0;
-  background: #fff8ee;
-  color: #956a31;
-  font-size: 11px;
-  line-height: 1.8;
-  overflow-wrap: anywhere;
 }
 .signals-panel {
   margin-bottom: 24px;
@@ -830,6 +810,23 @@ footer {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+#refresh {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #435064;
+}
+#refresh:hover:enabled,
+#refresh:focus-visible {
+  background: #e8f1ff;
+  color: #2468cf;
 }
 main.live-main {
   max-width: 1280px;

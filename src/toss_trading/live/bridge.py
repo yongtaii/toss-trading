@@ -44,6 +44,7 @@ class LiveBridge:
             else [
                 {
                     "event": "LIVE_RECONCILIATION_BLOCKED",
+                    "time": datetime.now(UTC).isoformat(),
                     "reason": reason,
                     "notify": True,
                 }

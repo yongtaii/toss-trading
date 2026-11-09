@@ -1,5 +1,6 @@
 """Weekly SMA20/200 execution using completed daily bars and durable LIVE intents."""
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 from functools import lru_cache
@@ -203,10 +204,20 @@ class WeeklyLive:
         if not await bridge.reconcile():
             return True
         rev, state = bridge.load()
-        quotes = {
-            symbol: parse_quote(symbol, await bridge.broker.orderbook(symbol))
-            for symbol in self.config.symbols
-        }
+        seconds_until_close = (session.close - datetime.now(UTC)).total_seconds()
+        if seconds_until_close <= 0:
+            return False
+        quote_deadline = asyncio.timeout(seconds_until_close)
+        try:
+            async with quote_deadline:
+                quotes = {
+                    symbol: parse_quote(symbol, await bridge.broker.orderbook(symbol))
+                    for symbol in self.config.symbols
+                }
+        except TimeoutError:
+            if not quote_deadline.expired():
+                raise
+            return False
         now = datetime.now(UTC)
         if not session.contains(now):
             return False

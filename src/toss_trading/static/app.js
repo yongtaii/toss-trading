@@ -141,29 +141,10 @@ function renderHealth(data) {
       candles: "분 단위 시세 조회",
       quotes: "매수·매도 가격 조회",
       processing: "매매 처리",
-      idle: "다음 수집 대기",
+      idle: "대기 중",
       stopped: "종료",
     }[worker.phase] || "미확인";
   $("heartbeat").textContent = `마지막 작동 신호 ${time(worker.heartbeat_at)}`;
-  $("feed-state").textContent =
-    {
-      success: "최근 수집 성공",
-      error: "수집 오류",
-      stale: "데이터 갱신 지연",
-      closed: "정규장 밖 · 시세 수집 대기",
-    }[worker.market_data_status] || "수집 기록 없음";
-  $("feed-state").className = ["error", "stale"].includes(
-    worker.market_data_status,
-  )
-    ? "state-warning"
-    : "";
-  $("feed-badge").textContent = worker.last_poll_finished
-    ? "최근 수집 결과"
-    : "미확인";
-  $("feed-last-success").textContent =
-    `마지막 시세 수집 성공 ${time(worker.last_market_data_success)}`;
-  $("calendar-last-success").textContent =
-    `시장 일정 조회 성공 ${time(worker.last_calendar_success)}`;
   const market = data.market;
   if (market) {
     const source = market.is_open ? market.source : market.next_open_source;
@@ -171,13 +152,6 @@ function renderHealth(data) {
       source === "broker" ? "증권사 일정" : "시장 일정표 기준 예상";
     $("market-next-open").textContent =
       `${market.is_open ? "마감" : "다음 개장"} ${time(market.is_open ? market.close : market.next_open)} (한국 시간)`;
-  }
-  const error = worker.last_error;
-  $("collector-error").hidden = !error;
-  if (error) {
-    const active = Boolean(worker.errors?.length);
-    $("collector-error").textContent =
-      `${active ? "수집 문제" : "최근 수집 문제 · 다음 수집에서 복구됨"} (${time(error.time)}) · ${(error.reasons || []).map(reasonLabel).join(" / ")}`;
   }
   tickMarketClock();
 }
@@ -599,8 +573,6 @@ function renderPreview() {
     market: { ...session, is_open: true, source: "broker" },
     worker: {
       status: "running", phase: "idle", heartbeat_at: ago(0),
-      market_data_status: "success", last_poll_finished: ago(0),
-      last_market_data_success: ago(0), last_calendar_success: ago(60),
     },
   });
   $("live-status").textContent = "미리보기 · 샘플 데이터";

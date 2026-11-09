@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal as D
 from pathlib import Path
@@ -7,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 from test_live import Broker
 
+from toss_trading.adapters.toss import BrokerError
 from toss_trading.domain import Position
 from toss_trading.live import weekly
 from toss_trading.live.bridge import LiveBridge
@@ -122,6 +124,43 @@ async def test_account_reconciliation_failure_creates_no_orders(setup):
     bridge.reconcile.return_value = False
     await weekly.WeeklyLive(bridge).poll()
     assert not bridge.load()[1].orders
+    bridge.flush.assert_not_awaited()
+
+
+async def test_market_closes_during_account_reconciliation(setup, monkeypatch):
+    bridge, _, session = setup
+
+    async def reconcile():
+        monkeypatch.setattr(weekly, "datetime", SimpleNamespace(now=lambda tz: session.close))
+        return True
+
+    bridge.reconcile.side_effect = reconcile
+    assert await weekly.WeeklyLive(bridge).poll() is False
+    bridge.broker.orderbook.assert_not_awaited()
+    bridge.flush.assert_not_awaited()
+
+
+async def test_market_closes_during_orderbook_request(setup, monkeypatch):
+    bridge, _, session = setup
+    now = session.close - timedelta(milliseconds=20)
+    monkeypatch.setattr(weekly, "datetime", SimpleNamespace(now=lambda tz: now))
+
+    async def orderbook(_symbol):
+        await asyncio.Event().wait()
+
+    bridge.broker.orderbook.side_effect = orderbook
+
+    assert await asyncio.wait_for(weekly.WeeklyLive(bridge).poll(), timeout=1) is False
+    bridge.broker.orderbook.assert_awaited_once()
+    bridge.flush.assert_not_awaited()
+
+
+async def test_orderbook_error_during_session_is_reported(setup):
+    bridge, _, _ = setup
+    bridge.broker.orderbook.side_effect = BrokerError(503)
+
+    with pytest.raises(BrokerError):
+        await weekly.WeeklyLive(bridge).poll()
     bridge.flush.assert_not_awaited()
 
 

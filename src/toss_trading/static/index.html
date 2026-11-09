@@ -13,7 +13,13 @@
       <a class="brand" href="/dashboard/"><span class="brand-icon">t</span> trading<span class="brand-dot">.</span></a>
       <div class="live-topbar-actions">
         <span id="live-status" class="paper-badge">실거래 상태 확인 중</span>
-        <button id="refresh" type="button">↻ 새로고침</button>
+        <button id="refresh" type="button" aria-label="새로고침" title="새로고침">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 5v6h-6" />
+            <path d="M19.7 11A8 8 0 1 0 19 16" />
+          </svg>
+        </button>
       </div>
     </header>
     <main id="overview" class="live-main">
@@ -110,9 +116,6 @@
               <dd id="risk">—</dd>
             </div>
           </dl>
-          <div class="operation-note">
-            프로그램의 작동 여부와 시세 수집 결과는 위에서 각각 확인할 수 있습니다.
-          </div>
         </article>
       </section>
       <section class="health-grid live-status-strip" aria-label="자동매매와 시장 상태">
@@ -126,15 +129,6 @@
         </article>
         <article class="health-card">
           <div class="health-label">
-            <span>시세 수집</span
-            ><span id="feed-badge" class="subtle-badge">—</span>
-          </div>
-          <h2 id="feed-state">확인 중</h2>
-          <p id="feed-last-success">시세를 가져온 기록 없음</p>
-          <p id="calendar-last-success">시장 일정 조회 기록 없음</p>
-        </article>
-        <article class="health-card">
-          <div class="health-label">
             <span id="market-clock-label">미국 정규장 개장까지</span
             ><span id="market-source" class="subtle-badge">예정</span>
           </div>
@@ -142,12 +136,6 @@
           <p id="market-next-open">시장 일정을 확인하고 있습니다.</p>
         </article>
       </section>
-      <div
-        id="collector-error"
-        class="collector-error"
-        hidden
-        role="status"
-      ></div>
       <section class="panel activity" id="activity">
         <div class="panel-heading">
           <div>
